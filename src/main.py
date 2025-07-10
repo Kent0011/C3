@@ -20,7 +20,36 @@ def activate_job():
 
 @app.route('/')
 def main():
-    return str(people_count)
+    return f'''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>食堂人数カウンター</title>
+        <meta charset="utf-8">
+        <style>
+            body {{
+                font-family: Arial, sans-serif;
+                text-align: center;
+                margin-top: 50px;
+                background-color: #f0f0f0;
+            }}
+            .counter {{
+                font-size: 48px;
+                color: #333;
+                margin: 20px 0;
+            }}
+            .message {{
+                font-size: 24px;
+                color: #666;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="counter">{people_count}</div>
+        <div class="message">人入りました</div>
+    </body>
+    </html>
+    '''
 
 if __name__ == '__main__':
     activate_job()

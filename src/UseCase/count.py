@@ -12,6 +12,6 @@ def count_people():
     count = 0
     for key, value in result.items():
         if key != 'T' and value['C'] == 0:  # クラスID 0 は人物
-            count += 1
+            count += value['P']
             
-    return count
+    return int(round(count))
