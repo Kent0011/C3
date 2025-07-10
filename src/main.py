@@ -8,15 +8,23 @@ app = Flask(__name__)
 
 people_count = 0
 
-def background_job():
+def count_up():
     global people_count
     while True:
         people_count += count_people()
         time.sleep(2)
 
+def count_down():
+    global people_count
+    while True:
+        people_count -= 1
+        time.sleep(60)
+
 def activate_job():
-    thread = threading.Thread(target=background_job)
-    thread.start()
+    thread1 = threading.Thread(target=count_up)
+    thread1.start()
+    thread2 = threading.Thread(target=count_down)
+    thread2.start()
 
 @app.route('/')
 def main():
