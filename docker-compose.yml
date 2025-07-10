@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  flask-app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - CONSOLE_ENDPOINT=${CONSOLE_ENDPOINT}
+      - AUTH_ENDPOINT=${AUTH_ENDPOINT}
+      - CLIENT_ID=${CLIENT_ID}
+      - CLIENT_SECRET=${CLIENT_SECRET}
+      - DEVICE_ID=${DEVICE_ID}
+    volumes:
+      - ./src:/app/src
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3 

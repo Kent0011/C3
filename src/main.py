@@ -1,5 +1,5 @@
 from flask import Flask
-import src.UseCase.fetch as fetch
+import UseCase.fetch as fetch
 
 app = Flask(__name__)
 
