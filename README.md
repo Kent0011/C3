@@ -1,6 +1,5 @@
-# SmartCamera Flask API
-
-オブジェクト検出の推論結果を取得するFlask APIアプリケーションです。
+# C32025前期
+カメラの推論結果をjsonで返すAPI
 
 ## ローカル実行
 
@@ -10,28 +9,14 @@ $ python main.py
 
 ## Docker実行
 
-### 1. 環境変数の設定
-
-`env.example`を参考に`.env`ファイルを作成してください：
-
 ```bash
-cp env.example .env
-# .envファイルを編集して実際の値を設定
-```
-
-### 2. Docker Composeで起動
-
-```bash
-# アプリケーションをビルドして起動
-docker-compose up --build
-
 # バックグラウンドで実行
 docker-compose up -d --build
 ```
 
 ### 3. アクセス
 
-アプリケーションは `http://localhost:8000` でアクセスできます。
+アプリケーションは `http://localhost:8000` でアクセス
 
 ## 環境変数
 
