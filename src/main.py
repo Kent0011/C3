@@ -55,6 +55,7 @@ def main():
     <body>
         <div class="counter">{people_count}</div>
         <div class="message">人入りました</div>
+        <div class="message">混雑率 {int(people_count/360*100)}%</div>
     </body>
     </html>
     '''
