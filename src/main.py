@@ -56,20 +56,9 @@ def count_up():
             people_count_log.popleft()
         time.sleep(3)
 
-def count_down():
-    global people_count
-    while True:
-        people_count -= 1
-        people_count -= random.randint(0, 3) # テスト用
-        if people_count < 0:
-            people_count = 0
-        time.sleep(60)
-
 def activate_job():
     thread1 = threading.Thread(target=count_up)
     thread1.start()
-    thread2 = threading.Thread(target=count_down)
-    thread2.start()
 
 @app.route('/api/count')
 def api_count():
