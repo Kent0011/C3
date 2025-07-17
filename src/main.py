@@ -7,6 +7,8 @@ import time
 import random # テスト用
 import logging # log非表示
 import datetime
+from collections import deque
+import itertools
 
 log = logging.getLogger('werkzeug')
 log.setLevel(logging.ERROR)
@@ -14,7 +16,8 @@ log.setLevel(logging.ERROR)
 app = Flask(__name__)
 
 people_count = 0
-people_count_log = []
+people_count_log = deque()
+people_queue = deque()
 AVERAGE_STAY_MINUTES = 18.5
 entry_history = []
 
@@ -43,11 +46,14 @@ def count_up():
         delta = count_people()
         delta = random.randint(0, 3) # テスト用
         people_count += delta
+        people_queue.append(delta)
+        if len(people_queue) > 370:
+            people_count -= people_queue.popleft()
         timestamp = time.strftime('%H:%M:%S')
         if time.time() % 20 < 3:
             people_count_log.append((timestamp, people_count))
-        # if len(people_count_log) > 100:
-        #     people_count_log.pop(0)
+        if len(people_count_log) > 100:
+            people_count_log.popleft()
         time.sleep(3)
 
 def count_down():
