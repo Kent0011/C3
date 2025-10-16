@@ -1,7 +1,6 @@
 from flask import Flask
 from flask import jsonify
-from UseCase.fetch import fetch_inference_result
-from UseCase.count import count_people
+from Repository import ai_camera_repository
 import threading
 import time
 import random # テスト用
@@ -17,7 +16,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def index():
-    return fetch_inference_result()
+    return ai_camera_repository.fetch_inference_result()
 
 @app.route('/ping')
 def ping():
