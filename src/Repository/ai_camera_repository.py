@@ -39,6 +39,9 @@ class AiCameraRepository:
         
         response = requests.get(url, headers=headers)
         
+        if response.status_code != 200:
+            return {"message": "Failed to get inference result"}
+        
         if len(response.json()['data']) == 0:
             return {}
         
