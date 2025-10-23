@@ -11,6 +11,9 @@ from SmartCamera import BoundingBox2d
 
 
 def fetch_inference_result() -> dict:
+    """
+    カメラの推論結果を成形して返す
+    """
 
     # 環境変数を読み込み
     load_dotenv()
