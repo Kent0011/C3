@@ -31,7 +31,6 @@ def fetch_inference_result():
     data = 'grant_type=client_credentials&scope=system'
     
     response = requests.post(auth_endpoint, headers=headers, data=data)
-    # print(response.json())
     access_token = response.json()['access_token']
     
     # 2. 推論結果取得
