@@ -10,7 +10,7 @@ from SmartCamera import BoundingBox
 from SmartCamera import BoundingBox2d
 
 
-def fetch_inference_result():
+def fetch_inference_result() -> dict:
 
     # 環境変数を読み込み
     load_dotenv()
@@ -40,7 +40,7 @@ def fetch_inference_result():
     response = requests.get(url, headers=headers)
     
     if len(response.json()['data']) == 0:
-        return 'No data'
+        return {}
     
     buf = response.json()['data'][0]['inference_result']
     
