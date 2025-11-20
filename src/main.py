@@ -560,70 +560,198 @@ def simulate_visit():
 
 @app.post("/simulate/scenario")
 def simulate_scenario():
+    """
+    カメラ検知シナリオ（複数人の来訪）をまとめて流す API。
+    body で room_id を指定した場合は、その部屋に対するイベントとして処理します。
+    """
     p = request.get_json(silent=True) or {}
     pattern = str(p.get("pattern", "staggered")).lower()
+    target_room = p.get("room_id", ROOM_ID)
+
     before = _snapshot_metrics()
     all_items = []
     total_ev_count = {"enter": 0, "exit": 0}
 
-    # Cross pattern not implemented in detail here, fallback to random logic for now
     visitors = int(p.get("visitors", p.get("num_visitors", 3)))
     visitors = max(1, visitors)
     gap_ms   = int(p.get("gap_ms", 500))
     min_d = int(p.get("min_dwell_ms", 500))
     max_d = int(p.get("max_dwell_ms", min_d))
-    if max_d < min_d: max_d = min_d
+    if max_d < min_d:
+        max_d = min_d
 
     for i in range(visitors):
         vp = dict(p)
-        dwell_ms = random.randint(min_d, max_d)
-        vp["dwell_ms"] = dwell_ms
-        events, steps, used_dwell = _simulate_visit_once(vp)
+        vp["dwell_ms"] = random.randint(min_d, max_d)
+        # ★ ここで room_id を明示的に渡す
+        events, steps, used_dwell = _simulate_visit_once(vp, target_room)
+
         ev_count = {"enter": 0, "exit": 0}
         for ev in events:
             t = ev.get("type")
-            if t in ev_count: ev_count[t] += 1; total_ev_count[t] += 1
-        all_items.append({"visitor_index": i, "dwell_ms": used_dwell, "num_events": len(events), "events": events, "events_count": ev_count})
+            if t in ev_count:
+                ev_count[t] += 1
+                total_ev_count[t] += 1
+
+        all_items.append({
+            "visitor_index": i,
+            "dwell_ms": used_dwell,
+            "num_events": len(events),
+            "events": events,
+            "events_count": ev_count,
+        })
+
         if i != visitors - 1:
             time.sleep(max(0, gap_ms) / 1000.0)
 
     after = _snapshot_metrics()
     summary = {
-        "bucket": AB_BUCKET, "pattern": pattern, "visitors": visitors, "events_count": total_ev_count,
-        "metrics_before": before, "metrics_after": after, "metrics_delta": _metrics_delta(after, before),
+        "bucket": AB_BUCKET,
+        "room_id": target_room,
+        "pattern": pattern,
+        "visitors": visitors,
+        "events_count": total_ev_count,
+        "metrics_before": before,
+        "metrics_after": after,
+        "metrics_delta": _metrics_delta(after, before),
     }
     return jsonify(ok=True, visitors=visitors, summary=summary, items=all_items)
 
 @app.post("/simulate/reservation_scenario")
 def simulate_reservation_scenario():
+    """
+    予約＋来訪シナリオ生成 API
+
+    pattern:
+      - "no_show" : 予約だけ作って全件ノーショー扱い（即 no_show_detected ログ）
+      - "mixed"   : 来訪あり/なし混在（show_ratio で来訪率を制御）
+      - "all_show": 全員来訪（全予約が来訪し、enter → 予約ヒットを狙う）
+    """
     p = request.get_json(silent=True) or {}
     pattern = str(p.get("pattern", "no_show")).lower()
-    if pattern not in ("no_show",):
+    if pattern not in ("no_show", "mixed", "all_show"):
         return jsonify(ok=False, error="unsupported pattern"), 400
+
+    target_room = p.get("room_id", ROOM_ID)
+
+    # 何件の予約を作るか
     num = int(p.get("num_reservations", p.get("count", 3)))
-    if num < 1: num = 1
+    if num < 1:
+        num = 1
+
     duration_min = int(p.get("duration_min", 30))
-    default_offset = -(ARRIVAL_WINDOW_AFTER_MIN + NO_SHOW_GRACE_MIN + 5)
+
+    # start_offset_min は「今から何分後に開始する予約か」のベース
+    # no_show 専用の時だけ「既に締め切りを過ぎた過去予約」として負のデフォルトにしておく
+    if pattern == "no_show":
+        default_offset = -(ARRIVAL_WINDOW_AFTER_MIN + NO_SHOW_GRACE_MIN + 5)
+    else:
+        default_offset = int(p.get("start_offset_min", 0))
     base_offset = int(p.get("start_offset_min", default_offset))
+
     id_prefix = str(p.get("id_prefix", "sim_ns_"))
+    show_ratio = float(p.get("show_ratio", 0.5))  # mixed 用の来訪率
+
     created = []
+    num_show = 0
+    num_no_show = 0
+
+    before = _snapshot_metrics()
     now_utc = datetime.now(timezone.utc)
+
     for i in range(num):
         rid = f"{id_prefix}{i+1}"
+
+        # 予約開始・終了時刻（内部は UTC で保存）
         start_utc = now_utc + timedelta(minutes=base_offset + i)
         end_utc   = start_utc + timedelta(minutes=duration_min)
+
+        # 予約状態を登録
         _rsv_upsert(rid, start_utc, end_utc)
-        _kpi_write({
-            "ts": now_iso_jst(), "room_id": ROOM_ID, "bucket": AB_BUCKET,
-            "event": "no_show_detected", "reservation_id": rid,
-            "arrival_window_after_min": ARRIVAL_WINDOW_AFTER_MIN,
-            "no_show_grace_min": NO_SHOW_GRACE_MIN, "simulated": True
-        })
         with _RS_LOCK:
             st = _RSV_STATE.get(rid)
-            if st: st["auto_released"] = True
-        created.append({"reservation_id": rid, "start_ts": start_utc.isoformat(), "end_ts": end_utc.isoformat()})
-    return jsonify(ok=True, pattern=pattern, bucket=AB_BUCKET, num_reservations=num, reservations=created)
+            if st:
+                st["room_id"] = target_room
+
+        created.append({
+            "reservation_id": rid,
+            "room_id": target_room,
+            "start_ts": start_utc.isoformat(),
+            "end_ts": end_utc.isoformat(),
+        })
+
+        # パターンごとの処理
+        if pattern == "no_show":
+            # 全件ノーショー：即座に auto_released + no_show_detected ログ
+            with _RS_LOCK:
+                st = _RSV_STATE.get(rid)
+                if st:
+                    st["auto_released"] = True
+            _kpi_write({
+                "ts": now_iso_jst(),
+                "room_id": target_room,
+                "bucket": AB_BUCKET,
+                "event": "no_show_detected",
+                "reservation_id": rid,
+                "arrival_window_after_min": ARRIVAL_WINDOW_AFTER_MIN,
+                "no_show_grace_min": NO_SHOW_GRACE_MIN,
+                "simulated": True,
+            })
+            num_no_show += 1
+            continue
+
+        # mixed / all_show の場合：この予約が「来訪するかどうか」を決める
+        if pattern == "all_show":
+            will_show = True
+        else:  # mixed
+            will_show = (random.random() < show_ratio)
+
+        if will_show:
+            # 来訪するケース：start_utc 付近の時刻を「チェックイン時刻」として enter イベントを流す
+            # arrival_offset は到着時刻のランダムずれ（到着許容窓の範囲内）
+            min_off = -ARRIVAL_WINDOW_BEFORE_MIN
+            max_off = ARRIVAL_WINDOW_AFTER_MIN
+            arrival_offset_min = random.randint(min_off, max_off)
+            arrival_utc = start_utc + timedelta(minutes=arrival_offset_min)
+
+            # process_event は ts_iso（JST文字列）を起点に checkin_attempt を呼ぶので、
+            # ここで JST に変換して渡す
+            ts_iso = arrival_utc.astimezone(JST).isoformat()
+            process_event(target_room, "enter", ts_iso, 0, confidence=0.95)
+            num_show += 1
+        else:
+            # 来訪しない：no_show_detected として扱う
+            with _RS_LOCK:
+                st = _RSV_STATE.get(rid)
+                if st:
+                    st["auto_released"] = True
+            _kpi_write({
+                "ts": now_iso_jst(),
+                "room_id": target_room,
+                "bucket": AB_BUCKET,
+                "event": "no_show_detected",
+                "reservation_id": rid,
+                "arrival_window_after_min": ARRIVAL_WINDOW_AFTER_MIN,
+                "no_show_grace_min": NO_SHOW_GRACE_MIN,
+                "simulated": True,
+            })
+            num_no_show += 1
+
+    after = _snapshot_metrics()
+
+    return jsonify(
+        ok=True,
+        pattern=pattern,
+        bucket=AB_BUCKET,
+        room_id=target_room,
+        num_reservations=num,
+        num_show=num_show,
+        num_no_show=num_no_show,
+        metrics_before=before,
+        metrics_after=after,
+        metrics_delta=_metrics_delta(after, before),
+        reservations=created,
+    )
 
 @app.post("/qr/checkin")
 def qr_checkin():
@@ -866,6 +994,27 @@ def mock_reservations_upcoming():
         ]
     return jsonify({"ok": True, "reservations": items})
 
+@app.route("/mock/reservations/all", methods=["GET"])
+def mock_reservations_all():
+    """
+    全部屋分の予約一覧を返す簡易API。
+    フロント側では「全室まとめの一覧表示」に利用します。
+    """
+    with _RS_LOCK:
+        items = []
+        for rid, st in _RSV_STATE.items():
+            items.append({
+                "reservation_id": rid,
+                "room_id": st.get("room_id", ROOM_ID),
+                "start_ts": st["start"].isoformat(),
+                "end_ts": st["end"].isoformat(),
+                "checked_in": st["checked_in"],
+                "auto_released": st["auto_released"],
+                "closed": st.get("closed", False),
+                "overstayed": st.get("overstayed", False),
+            })
+    return jsonify({"ok": True, "reservations": items})
+
 @app.route("/mock/reservations/auto-release", methods=["POST"])
 def mock_auto_release():
     data = request.get_json(force=True) or {}
@@ -879,19 +1028,32 @@ def reservations_extend():
     data = request.get_json(force=True) or {}
     rid = data.get("reservation_id")
     add = int(data.get("extend_min", 15))
-    if not rid: return jsonify(ok=False, error="reservation_id required"), 400
-    with _O_LOCK: occ = _OCCUPANCY
-    if occ <= 0: return jsonify(ok=False, error="no_occupancy"), 409
+    if not rid:
+        return jsonify(ok=False, error="reservation_id required"), 400
+
+    with _O_LOCK:
+        occ = _OCCUPANCY
+    if occ <= 0:
+        return jsonify(ok=False, error="no_occupancy"), 409
+
     with _RS_LOCK:
         st = _RSV_STATE.get(rid)
-        if not st: return jsonify(ok=False, error="reservation_not_found"), 404
+        if not st:
+            return jsonify(ok=False, error="reservation_not_found"), 404
         st["end"] = st["end"] + timedelta(minutes=add)
-        st["closed"] = False; st["overstayed"] = False
+        st["closed"] = False
+        st["overstayed"] = False
+        room = st.get("room_id", ROOM_ID)
+
     _kpi_write({
-        "ts": now_iso_jst(), "room_id": ROOM_ID, "bucket": AB_BUCKET,
-        "event": "reservation_extended", "reservation_id": rid, "extend_min": add
+        "ts": now_iso_jst(),
+        "room_id": room,
+        "bucket": AB_BUCKET,
+        "event": "reservation_extended",
+        "reservation_id": rid,
+        "extend_min": add,
     })
-    return jsonify(ok=True, reservation_id=rid, new_end_ts=st["end"].isoformat())
+    return jsonify(ok=True, reservation_id=rid, room_id=room, new_end_ts=st["end"].isoformat())
 
 @app.route("/mock/locks/revoke", methods=["POST"])
 def mock_locks_revoke():
@@ -1007,6 +1169,12 @@ def ui_dev():
     </div>
     <details class="mt-2"><summary class="text-xs text-indigo-600 cursor-pointer">予約リスト(Raw JSON)を表示</summary><pre id="rsv" class="text-xs bg-gray-50 rounded p-2 mt-1 overflow-auto h-24 border"></pre></details>
     <div class="mt-4 bg-gray-50 p-3 rounded border">
+      <div class="mt-3">
+    <div class="text-xs font-semibold mb-1">全室の予約一覧</div>
+    <div id="rsvAllTable" class="text-xs bg-gray-50 rounded p-2 h-24 overflow-auto border">
+      予約なし
+    </div>
+  </div>
       <div class="font-semibold text-sm mb-2">予約操作</div>
       <div class="flex flex-wrap gap-2 items-end text-sm mb-2">
         <label class="flex flex-col"><span>ID</span><input id="newRid" type="text" value="demo_001" class="border rounded px-2 py-1 w-24"></label>
@@ -1040,15 +1208,33 @@ def ui_dev():
       <pre id="scenarioOut" class="text-xs bg-gray-50 rounded p-2 h-20 overflow-auto mt-2 border"></pre>
     </div>
     <div class="space-y-4">
-       <div class="bg-white border rounded-xl p-4">
-          <div class="font-semibold mb-2 text-sm">予約シナリオ (ノーショー)</div>
-          <div class="flex items-end gap-2">
-            <label class="text-xs">件数 <input id="rsvNum" type="number" value="3" class="border rounded px-1 w-12"></label>
-            <label class="text-xs">Prefix <input id="rsvPrefix" type="text" value="sim_ns_" class="border rounded px-1 w-20"></label>
-            <button class="px-3 py-2 bg-rose-600 text-white rounded text-sm flex-1 shadow" onclick="runNoShowScenario()">ノーショー生成</button>
-          </div>
-          <div id="rsvScenarioOut" class="mt-1 text-xs text-gray-500 truncate"></div>
-       </div>
+<div class="bg-white border rounded-xl p-4">
+  <div class="font-semibold mb-2 text-sm">予約＋来訪シナリオ</div>
+  <div class="flex flex-wrap items-end gap-2">
+    <label class="text-xs">
+      件数
+      <input id="rsvNum" type="number" value="3" class="border rounded px-1 w-12">
+    </label>
+    <label class="text-xs">
+      Prefix
+      <input id="rsvPrefix" type="text" value="sim_ns_" class="border rounded px-1 w-20">
+    </label>
+    <label class="text-xs">
+      来訪率(0〜1, mixed用)
+      <input id="rsvShowRatio" type="number" value="0.5" step="0.1" min="0" max="1"
+             class="border rounded px-1 w-16">
+    </label>
+  </div>
+  <div class="flex mt-2 gap-2 text-xs">
+    <button class="px-3 py-2 bg-rose-600 text-white rounded flex-1 shadow"
+            onclick="runReservationScenario('no_show')">ノーショーのみ</button>
+    <button class="px-3 py-2 bg-amber-500 text-white rounded flex-1 shadow"
+            onclick="runReservationScenario('mixed')">混在</button>
+    <button class="px-3 py-2 bg-emerald-600 text-white rounded flex-1 shadow"
+            onclick="runReservationScenario('all_show')">全員来訪</button>
+  </div>
+  <div id="rsvScenarioOut" class="mt-1 text-xs text-gray-500 break-words"></div>
+</div>
        <div class="bg-white border rounded-xl p-4">
           <div class="font-semibold mb-1 text-sm">KPIサマリ</div>
           <div id="miniKpi" class="text-xs text-gray-600 h-20 overflow-auto">Loading...</div>
@@ -1087,6 +1273,9 @@ def ui_dev():
   </section>
 </div>
 <script>
+let cachedReservations = [];
+let allReservations = [];  // ★追加: 全室分
+
 async function j(u,m='GET',b){
   const o={method:m,headers:{'Content-Type':'application/json'}};
   if(b)o.body=JSON.stringify(b);
@@ -1132,6 +1321,52 @@ function renderTimeline(){
     el.appendChild(bar);
   });
   document.getElementById('clock').innerText=now.toLocaleTimeString();
+}
+async function loadAllReservations(){
+  try {
+    const r = await j('/mock/reservations/all');
+    allReservations = r.reservations || [];
+    renderAllReservations();
+  } catch(e) {
+    console.error(e);
+  }
+}
+
+function renderAllReservations(){
+  const el = document.getElementById('rsvAllTable');
+  if (!el) return;
+
+  if (!allReservations.length){
+    el.textContent = '予約なし';
+    return;
+  }
+
+  let html = '<table class="w-full"><thead><tr>' +
+             '<th class="text-left">Room</th>' +
+             '<th class="text-left">ID</th>' +
+             '<th class="text-right">開始</th>' +
+             '<th class="text-right">終了</th>' +
+             '<th class="text-right">状態</th>' +
+             '</tr></thead><tbody>';
+
+  allReservations.forEach(r => {
+    const st = [];
+    if (r.checked_in)    st.push('入室済');
+    if (r.auto_released) st.push('ノーショー解除');
+    if (r.closed)        st.push('終了');
+    if (r.overstayed)    st.push('延長超過');
+
+    html += `<tr>
+      <td>${r.room_id}</td>
+      <td>${r.reservation_id}</td>
+      <td class="text-right">${new Date(r.start_ts).toLocaleTimeString()}</td>
+      <td class="text-right">${new Date(r.end_ts).toLocaleTimeString()}</td>
+      <td class="text-right">${st.join(',') || '-'}</td>
+    </tr>`;
+  });
+
+  html += '</tbody></table>';
+  el.innerHTML = html;
 }
 
 // 予約作成
@@ -1204,16 +1439,71 @@ async function runMulti(){
   } catch(e){ setText('scenarioOut', e.message) } 
 }
 async function runMultiForBucket(b){ await j('/ab/set','POST',{bucket:b}); runMulti(); }
-async function runNoShowScenario(){ const n=Number(document.getElementById('rsvNum').value)||3, p=document.getElementById('rsvPrefix').value||'sim_ns_'; const r=await j('/simulate/reservation_scenario','POST',{pattern:'no_show',num_reservations:n,id_prefix:p}); setText('rsvScenarioOut',`Done: ${n} records`); refreshMonitor(); }
+async function runReservationScenario(mode){
+  const n   = Number(document.getElementById('rsvNum').value) || 3;
+  const pre = document.getElementById('rsvPrefix').value || 'sim_ns_';
+  const room = document.getElementById('targetRoom').value;
+  const ratio = Number(document.getElementById('rsvShowRatio').value) || 0.5;
+
+  const payload = {
+    pattern: mode,
+    num_reservations: n,
+    id_prefix: pre,
+    room_id: room,
+  };
+  if (mode === 'mixed') {
+    payload.show_ratio = ratio;
+  }
+
+  try {
+    const r = await j('/simulate/reservation_scenario','POST', payload);
+
+    // ちょっと読みやすい要約テキストにする
+    const d = r.metrics_delta || {};
+    const enterDelta  = (d.enter ?? 0);
+    const hitDelta    = (d.checkin_success ?? 0);
+    const occDelta    = (d.occupancy_delta ?? 0);
+
+    const summary =
+      `pattern=${r.pattern}, room=${r.room_id}, ` +
+      `total=${r.num_reservations}, show=${r.num_show||0}, no_show=${r.num_no_show||0} / ` +
+      `Δenter=${enterDelta}, Δcheckin_hit=${hitDelta}, Δocc=${occDelta}`;
+
+    setText('rsvScenarioOut', summary);
+    await refreshMonitor();
+  } catch(e){
+    setText('rsvScenarioOut', "エラー: " + e.message);
+  }
+}
 
 async function refreshMonitor(){
-  const m=await j('/metrics'); if(m&&m.counters){ setText('occ',m.occupancy??'–'); setText('bucket',m.bucket??'–'); setText('ee',(m.counters.enter??0)+'/'+(m.counters.exit??0)); setText('qr',(m.counters.checkin_success??0)+'/'+(m.counters.checkin_fail??0)); }
-  const k=await j('/kpi/summary'); const mk=document.getElementById('miniKpi');
-  if(mk){ let h='<table class="w-full"><tr><td>Bucket</td><td align="right">Ent</td><td align="right">Hit</td></tr>'; (k.summary||[]).forEach(r=>{ h+=`<tr><td>${r.bucket}</td><td align="right">${r.enter}</td><td align="right">${r.success} (${fmtPct(r.rate)})</td></tr>`; }); h+='</table>'; mk.innerHTML=h; }
-  await loadUpcoming();
+  const m=await j('/metrics'); 
+  if(m && m.counters){
+    setText('occ',m.occupancy??'–');
+    setText('bucket',m.bucket??'–');
+    setText('ee',(m.counters.enter??0)+'/'+(m.counters.exit??0));
+    setText('qr',(m.counters.checkin_success??0)+'/'+(m.counters.checkin_fail??0));
+  }
+
+  const k=await j('/kpi/summary');
+  const mk=document.getElementById('miniKpi');
+  if(mk){
+    let h='<table class="w-full"><tr><td>Bucket</td><td align="right">Ent</td><td align="right">Hit</td></tr>';
+    (k.summary||[]).forEach(r=>{
+      h+=`<tr><td>${r.bucket}</td><td align="right">${r.enter}</td><td align="right">${r.success} (${fmtPct(r.rate)})</td></tr>`;
+    });
+    h+='</table>'; mk.innerHTML=h;
+  }
+
+  await loadUpcoming();        // 選択中の1部屋（タイムライン）
+  await loadAllReservations(); // ★追加: 全室一覧
 }
+
 async function loadTail(){ const r=await j('/kpi/tail?n=50'); setText('tail',r.items); }
-loadUpcoming(); setInterval(refreshMonitor, 1000); createCustomRsv();
+// 初期表示
+refreshMonitor();    // メトリクス＋予約情報読み込み
+loadTail();          // KPIログ末尾
+setInterval(refreshMonitor, 1000);
 </script></body></html>"""
     return render_template_string(html)
 
@@ -1225,22 +1515,44 @@ def no_show_watcher_loop():
             with _RS_LOCK:
                 items = list(_RSV_STATE.items())
             for rid, st in items:
-                if st["checked_in"] or st["auto_released"]: continue
+                if st["checked_in"] or st["auto_released"]:
+                    continue
+
                 window_end = st["start"] + timedelta(minutes=ARRIVAL_WINDOW_AFTER_MIN)
                 deadline   = window_end + timedelta(minutes=NO_SHOW_GRACE_MIN)
                 if now >= deadline:
-                    with _RS_LOCK: st["auto_released"] = True
+                    with _RS_LOCK:
+                        st["auto_released"] = True
+                    room = st.get("room_id", ROOM_ID)
+
                     _kpi_write({
-                        "ts": now_iso_jst(), "room_id": ROOM_ID, "bucket": AB_BUCKET, "event": "no_show_detected",
-                        "reservation_id": rid, "arrival_window_after_min": ARRIVAL_WINDOW_AFTER_MIN,
-                        "no_show_grace_min": NO_SHOW_GRACE_MIN
+                        "ts": now_iso_jst(),
+                        "room_id": room,
+                        "bucket": AB_BUCKET,
+                        "event": "no_show_detected",
+                        "reservation_id": rid,
+                        "arrival_window_after_min": ARRIVAL_WINDOW_AFTER_MIN,
+                        "no_show_grace_min": NO_SHOW_GRACE_MIN,
                     })
+
                     if RESERVATION_API_BASE:
-                        try: requests.post(f"{RESERVATION_API_BASE}/reservations/auto-release", json={"reservation_id": rid, "room_id": ROOM_ID}, timeout=2)
-                        except Exception: pass
+                        try:
+                            requests.post(
+                                f"{RESERVATION_API_BASE}/reservations/auto-release",
+                                json={"reservation_id": rid, "room_id": room},
+                                timeout=2,
+                            )
+                        except Exception:
+                            pass
                     if LOCK_API_BASE:
-                        try: requests.post(f"{LOCK_API_BASE}/locks/revoke", json={"reservation_id": rid, "room_id": ROOM_ID}, timeout=2)
-                        except Exception: pass
+                        try:
+                            requests.post(
+                                f"{LOCK_API_BASE}/locks/revoke",
+                                json={"reservation_id": rid, "room_id": room},
+                                timeout=2,
+                            )
+                        except Exception:
+                            pass
         except Exception as e:
             app.logger.exception("no_show_watcher error: %s", e)
         time.sleep(interval_sec)
@@ -1253,26 +1565,62 @@ def end_watcher_loop():
             with _RS_LOCK:
                 items = list(_RSV_STATE.items())
             for rid, st in items:
-                if st["auto_released"]: continue
+                if st["auto_released"]:
+                    continue
+
+                room = st.get("room_id", ROOM_ID)
+
                 close_from = st["end"] - timedelta(minutes=END_CLOSE_WINDOW_MIN)
                 close_to   = st["end"] + timedelta(minutes=END_CLOSE_WINDOW_MIN)
+
+                # 終了ウィンドウ内で在室0なら「終了」
                 if (not st.get("closed")) and (close_from <= now_utc <= close_to):
-                    with _O_LOCK: occ = _OCCUPANCY
+                    with _O_LOCK:
+                        occ = _OCCUPANCY
                     if occ == 0:
                         st["closed"] = True
-                        _kpi_write({"ts": now_iso_jst(), "room_id": ROOM_ID, "bucket": AB_BUCKET, "event": "reservation_closed", "reservation_id": rid, "reason": "zero_occupancy_near_end"})
+                        _kpi_write({
+                            "ts": now_iso_jst(),
+                            "room_id": room,
+                            "bucket": AB_BUCKET,
+                            "event": "reservation_closed",
+                            "reservation_id": rid,
+                            "reason": "zero_occupancy_near_end",
+                        })
                         if LOCK_API_BASE:
-                             try: requests.post(f"{LOCK_API_BASE}/locks/revoke", json={"reservation_id": rid, "room_id": ROOM_ID}, timeout=2)
-                             except Exception: pass
+                            try:
+                                requests.post(
+                                    f"{LOCK_API_BASE}/locks/revoke",
+                                    json={"reservation_id": rid, "room_id": room},
+                                    timeout=2,
+                                )
+                            except Exception:
+                                pass
+
+                # 終了＋猶予を超えてまだ在室>0なら「オーバーステイ」
                 deadline = st["end"] + timedelta(minutes=OVERSTAY_GRACE_MIN)
                 if (not st.get("overstayed")) and (now_utc >= deadline):
-                    with _O_LOCK: occ = _OCCUPANCY
+                    with _O_LOCK:
+                        occ = _OCCUPANCY
                     if occ > 0:
                         st["overstayed"] = True
-                        _kpi_write({"ts": now_iso_jst(), "room_id": ROOM_ID, "bucket": AB_BUCKET, "event": "overstay_detected", "reservation_id": rid, "occupancy": occ})
+                        _kpi_write({
+                            "ts": now_iso_jst(),
+                            "room_id": room,
+                            "bucket": AB_BUCKET,
+                            "event": "overstay_detected",
+                            "reservation_id": rid,
+                            "occupancy": occ,
+                        })
                         if RESERVATION_API_BASE:
-                             try: requests.post(f"{RESERVATION_API_BASE}/reservations/overstay", json={"reservation_id": rid, "room_id": ROOM_ID, "occupancy": occ}, timeout=2)
-                             except Exception: pass
+                            try:
+                                requests.post(
+                                    f"{RESERVATION_API_BASE}/reservations/overstay",
+                                    json={"reservation_id": rid, "room_id": room, "occupancy": occ},
+                                    timeout=2,
+                                )
+                            except Exception:
+                                pass
         except Exception as e:
             app.logger.exception("end_watcher error: %s", e)
         time.sleep(interval_sec)
