@@ -8,7 +8,6 @@ import threading
 from dotenv import load_dotenv
 
 # 新規サービスのインポート
-from Services.occupancy_service import OccupancyService
 from Services.room_state_manager import RoomStateManager
 
 load_dotenv()
@@ -19,7 +18,6 @@ app = Flask(__name__)
 
 # --- 設定 ---
 POLLING_INTERVAL = 5  # 秒 (設計仕様)
-TARGET_CLASS_ID = 0  # 人クラスのID (モデルに合わせて変更してください。一般的に0が多い)
 
 # --- インスタンス初期化 ---
 # カメラリポジトリ (Device IDは.envから取得)
@@ -33,11 +31,10 @@ ai_camera_repository = Repository.AiCameraRepository(
 
 # 部屋の状態管理 (今回は1部屋のみを想定。複数カメラの場合はリストで管理)
 ROOM_ID = "Room-A"
-occupancy_service = OccupancyService()
 room_manager = RoomStateManager(ROOM_ID)
 
 # 最新の状態を保持する変数（API返却用）
-system_status = {}
+system_status = {'a': "s"}
 
 
 def background_monitoring_task():
@@ -53,18 +50,8 @@ def background_monitoring_task():
 
             # 1. カメラから推論結果取得
             # 注意: リポジトリの実装に合わせて、エラーハンドリング等は適宜追加してください
-            result = ai_camera_repository.fetch_inference_result()
-
-            # 2. 人数カウント (obs_count)
-            obs_count = 0
-            if result:
-                # result は {'1': {'C': 0, 'P': 0.9, ...}, '2': ...} のような形式と想定
-                for key, val in result.items():
-                    if "C" in val and val["C"] == TARGET_CLASS_ID:
-                        obs_count += 1
-
-            # 3. 平滑化と占有判定 (Occupancy Service)
-            is_occupied = occupancy_service.update_observation(obs_count)
+            obs_count = ai_camera_repository.fetch_dummy_result()
+            is_occupied = obs_count > 0
 
             # 4. 予約・部屋状態の更新 (Room State Manager)
             state_info = room_manager.update_state(is_occupied, current_time)
@@ -73,15 +60,12 @@ def background_monitoring_task():
             system_status = {
                 "timestamp": current_time.isoformat(),
                 "room_id": ROOM_ID,
-                "obs_count_raw": obs_count,
-                "is_occupied_smoothed": is_occupied,
+                "people_count": obs_count,
+                "is_used": is_occupied,
                 "room_state": state_info["state"],
                 "reservation_id": state_info["reservation_id"],
                 "alert": state_info["alert"],
             }
-
-            # ログ出力 (デバッグ用)
-            # print(f"Tick: {current_time.strftime('%H:%M:%S')} | Count: {obs_count} | Occ: {is_occupied} | State: {state_info['state']}")
 
         except Exception as e:
             print(f"Error in monitoring task: {e}")
