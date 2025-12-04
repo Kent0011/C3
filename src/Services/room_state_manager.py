@@ -1,132 +1,150 @@
-import datetime
+from datetime import datetime, timedelta
 from enum import Enum, auto
+from typing import Optional
+
+from Domain.reservation import Reservation, ReservationStatus
+from typing import Any
+from Services.penalty_service import PenaltyService
 
 
 class RoomState(Enum):
-    IDLE = auto()  # 予約なし
-    RESERVED_NOT_USED = auto()  # 予約あり・未利用
+    IDLE = auto()  # 対象予約なし
+    RESERVED_NOT_USED = auto()  # 対象予約あり・未利用
     IN_USE = auto()  # 利用中
-    FINISHED = auto()  # 終了（ノーショー含む）
-
-
-class Reservation:
-    def __init__(self, reservation_id, room_id, start_time, end_time):
-        self.reservation_id = reservation_id
-        self.room_id = room_id
-        self.start_time = start_time
-        self.end_time = end_time
-        self.is_checked_in = False  # 利用実績フラグ
+    FINISHED = auto()  # 対象予約のセッション終了（ノーショー含む）
 
 
 class RoomStateManager:
-    def __init__(self, room_id):
+    def __init__(
+        self,
+        room_id: str,
+        reservation_repo: Any,  # InMemory / Sqlite どちらも受ける
+        penalty_service: PenaltyService,
+    ):
         self.room_id = room_id
-        self.current_state = RoomState.IDLE
-        self.current_reservation = None
+        self.reservation_repo = reservation_repo
+        self.penalty_service = penalty_service
 
-        # 設定値 (分単位を秒などで管理)
-        self.grace_period_sec = 10 * 60  # 終了後猶予 10分
-        self.arrival_window_before_sec = 10 * 60  # 開始前 10分
-        self.arrival_window_after_sec = 15 * 60  # 開始後 15分
+        self.current_state: RoomState = RoomState.IDLE
+        self.current_reservation_id: Optional[str] = None
 
-    def update_state(self, is_occupied: bool, current_time: datetime.datetime):
-        """
-        現在の占有状態と時刻をもとに状態遷移を行う
-        """
+        self.grace_period_sec = 10 * 60  # 利用終了後の猶予
+        self.arrival_window_before_sec = 10 * 60  # 開始前の「到着してよい」ウィンドウ
+        self.arrival_window_after_sec = 15 * 60  # 開始後の「遅刻許容」ウィンドウ
+        self.cleanup_margin_sec = 30 * 60  # FINISHED → 次予約に移るまでのマージン
 
-        # 0. 予約情報の取得（モック: 本来は外部APIから取得）
-        if self.current_reservation is None:
-            self._fetch_next_reservation(current_time)
+    def update_state(self, is_occupied: bool, current_time: datetime):
+        alert: Optional[str] = None
 
-        # 予約がない場合は IDLE
-        if self.current_reservation is None:
+        # 0. 今追いかけている予約を取得
+        res: Optional[Reservation] = None
+        if self.current_reservation_id is not None:
+            res = self.reservation_repo.get_reservation_by_id(
+                self.current_reservation_id
+            )
+
+        # 1. 予約が消えている / CANCELLED / 完全に過去ならターゲットを取り直す
+        cleanup_margin = timedelta(seconds=self.cleanup_margin_sec)
+        if (
+            res is None
+            or res.status == ReservationStatus.CANCELLED
+            or current_time > res.end_time + cleanup_margin
+        ):
+            res = self._select_target_reservation(current_time)
+            self.current_reservation_id = res.reservation_id if res else None
+
+            # ここで状態をリセットするのが肝
+            # - res is None なら IDLE
+            # - 新しい予約を追いかける場合も、必ず IDLE から開始
             self.current_state = RoomState.IDLE
+
+        # ここから先、res が None なら「今は追うべき予約がない」
+        if res is None:
             return {
-                "state": self.current_state.name,
-                "reservation": None,
+                "state": self.current_state.name,  # IDLE のはず
+                "reservation_id": None,
+                "is_occupied": is_occupied,
                 "alert": None,
             }
 
-        res = self.current_reservation
-        alert = None
+        # ===== ステートマシン本体は今のままで OK =====
 
-        # --- ステートマシン ---
-
-        # 1. IDLE -> RESERVED_NOT_USED
-        # 開始時間の少し前から予約待機状態にする
+        # 2. IDLE -> RESERVED_NOT_USED
         if self.current_state == RoomState.IDLE:
-            # 開始時刻 - window <= now
-            start_window = res.start_time - datetime.timedelta(
+            start_window = res.start_time - timedelta(
                 seconds=self.arrival_window_before_sec
             )
             if current_time >= start_window:
                 self.current_state = RoomState.RESERVED_NOT_USED
 
-        # 2. RESERVED_NOT_USED -> IN_USE (利用開始検知)
+        # 3. RESERVED_NOT_USED -> IN_USE / FINISHED (ノーショー)
         if self.current_state == RoomState.RESERVED_NOT_USED:
-            # 許容期間内か？
-            valid_arrival_limit = res.start_time + datetime.timedelta(
+            valid_arrival_limit = res.start_time + timedelta(
                 seconds=self.arrival_window_after_sec
             )
 
             if is_occupied:
                 self.current_state = RoomState.IN_USE
-                res.is_checked_in = True
-                print(f"[{self.room_id}] Check-in detected.")
-
-            # 3. RESERVED_NOT_USED -> FINISHED (ノーショー判定)
+                self.reservation_repo.mark_used(res.reservation_id)
+                self._log(
+                    f"Check-in detected (res_id={res.reservation_id}, user={res.user_id})"
+                )
             elif current_time > valid_arrival_limit:
+                if res.status == ReservationStatus.ACTIVE:
+                    self.reservation_repo.mark_no_show(res.reservation_id)
+                    self.penalty_service.add_penalty(res.user_id, reason="NO_SHOW")
+                    self._log(
+                        f"No-show detected (res_id={res.reservation_id}, user={res.user_id})"
+                    )
                 self.current_state = RoomState.FINISHED
-                print(f"[{self.room_id}] No-show detected.")
-                # ここで外部にノーショー通知を送る処理が入る
 
-        # 4. IN_USE -> FINISHED (通常終了判定)
+        # 4. IN_USE -> FINISHED (終了 or OVERSTAY)
         if self.current_state == RoomState.IN_USE:
-            end_limit = res.end_time + datetime.timedelta(seconds=self.grace_period_sec)
-
-            # 終了時刻 + grace period を過ぎた
+            end_limit = res.end_time + timedelta(seconds=self.grace_period_sec)
             if current_time > end_limit:
-                # 8.3 超過利用の検知
                 if is_occupied:
-                    # ステートはIN_USEのままだが、アラートを出す設計
                     alert = "OVERSTAY"
-                    print(f"[{self.room_id}] Overstay detected!")
+                    self._log(f"Overstay detected (res_id={res.reservation_id})")
                 else:
-                    # 誰もいなければ終了
                     self.current_state = RoomState.FINISHED
-                    print(f"[{self.room_id}] Session finished.")
+                    self._log(f"Session finished (res_id={res.reservation_id})")
 
-        # 5. FINISHED -> IDLE (クリーンアップ)
-        if self.current_state == RoomState.FINISHED:
-            # 次の予約などがなければIDLEへ戻すなどの処理
-            # 今回は簡易的に、予約終了時刻を大幅に過ぎたらリセット
-            if current_time > res.end_time + datetime.timedelta(minutes=30):
-                self.current_reservation = None
-                self.current_state = RoomState.IDLE
+        # 5. FINISHED のままにしておくかどうかは「cleanup 条件」で次の呼び出し時に処理される。
+        #   ここで IDLE に戻す必要はない（戻すのは 0〜1 でやる）。
 
         return {
             "state": self.current_state.name,
-            "reservation_id": res.reservation_id if res else None,
+            "reservation_id": res.reservation_id,
             "is_occupied": is_occupied,
             "alert": alert,
         }
 
-    def _fetch_next_reservation(self, now):
+    def _select_target_reservation(self, now: datetime) -> Optional[Reservation]:
         """
-        デモ用のダミー予約生成
-        現在時刻の1分後に開始し、5分間続く予約を作成する
-        """
-        # 既に予約処理済みなら何もしない（簡易実装）
-        # 本番ではDB等を参照する
-        start = now + datetime.timedelta(minutes=1)
-        end = start + datetime.timedelta(minutes=5)
+        現在時刻 now に対して「追いかけるべき予約」を1件選ぶ。
 
-        self.current_reservation = Reservation(
-            reservation_id=f"res-{int(now.timestamp())}",
-            room_id=self.room_id,
-            start_time=start,
-            end_time=end,
-        )
-        print(
-            f"[{self.room_id}] New reservation created: {start.strftime('%H:%M')} - {end.strftime('%H:%M')}"
-        )
+        - CANCELLED は無視
+        - end_time + cleanup_margin を過ぎたものは「過去扱い」で無視
+        - 残りから start_time が最も早いものを採用
+        """
+        candidates = []
+        room_res_list = self.reservation_repo.get_reservations_for_room(self.room_id)
+
+        cleanup_margin = timedelta(seconds=self.cleanup_margin_sec)
+
+        for res in room_res_list:
+            if res.status == ReservationStatus.CANCELLED:
+                continue
+            if res.end_time + cleanup_margin < now:
+                # 完全に過去の予約
+                continue
+            candidates.append(res)
+
+        if not candidates:
+            return None
+
+        candidates.sort(key=lambda r: r.start_time)
+        return candidates[0]
+
+    def _log(self, msg: str) -> None:
+        print(f"[RoomStateManager][{self.room_id}] {msg}")

@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Room Reservation App</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      body {
+        font-family: sans-serif;
+        margin: 16px;
+      }
+      section {
+        border: 1px solid #ccc;
+        padding: 12px;
+        margin-bottom: 12px;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      th,
+      td {
+        border: 1px solid #ccc;
+        padding: 4px 8px;
+        font-size: 0.9rem;
+      }
+      th {
+        background: #f0f0f0;
+      }
+      button {
+        margin-left: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Room Reservation</h1>
+
+    <!-- 1. ユーザー & 日付 & 予約作成 -->
+    <section>
+      <h2>1. 予約作成</h2>
+      <label>
+        user_id:
+        <input id="userId" type="text" value="user-001" />
+      </label>
+      <div id="banBanner" style="margin-top: 4px; font-weight: bold"></div>
+      <br />
+      <label>
+        日付:
+        <input id="resDate" type="date" />
+      </label>
+      <br />
+      <label>
+        開始時刻:
+        <select id="startTimeSelect"></select>
+      </label>
+      <label>
+        利用時間（分）:
+        <select id="durationSelect"></select>
+      </label>
+      <br />
+      <button onclick="createReservation()">予約する</button>
+      <span id="createMessage"></span>
+    </section>
+
+    <!-- 2. 現在ステータス -->
+    <section>
+      <h2>2. 現在ステータス</h2>
+      <button onclick="loadStatus()">最新状態を取得</button>
+      <table id="statusTable">
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <!-- 3. 自分の予約一覧 -->
+    <section>
+      <h2>3. 自分の予約一覧</h2>
+      <button onclick="loadReservations()">予約一覧を更新</button>
+      <table id="reservationsTable">
+        <thead>
+          <tr>
+            <th>reservation_id</th>
+            <th>start</th>
+            <th>end</th>
+            <th>status</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <pre id="reservationError"></pre>
+    </section>
+
+    <!-- 4. ペナルティ状況 -->
+    <section>
+      <h2>4. ペナルティ状況</h2>
+      <button onclick="loadPenalty()">ペナルティ状況を更新</button>
+      <table id="penaltyTable">
+        <tbody></tbody>
+      </table>
+      <pre id="penaltyError"></pre>
+    </section>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+</html>
