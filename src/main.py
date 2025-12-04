@@ -31,12 +31,13 @@ from Services.occupancy_provider import (
     DummyOccupancyProvider,
 )
 
+load_dotenv()
+
 # 予約時間に関する設定（分や日数の制約）
 MIN_RESERVE_MINUTES = int(os.getenv("MIN_RESERVE_MINUTES", "15"))  # 最短 15 分
 MAX_RESERVE_MINUTES = int(os.getenv("MAX_RESERVE_MINUTES", "120"))  # 最長 120 分
 MAX_RESERVE_DAYS_AHEAD = int(os.getenv("MAX_RESERVE_DAYS_AHEAD", "7"))  # 7日先まで
 
-load_dotenv()
 log = logging.getLogger("werkzeug")
 log.setLevel(logging.ERROR)
 

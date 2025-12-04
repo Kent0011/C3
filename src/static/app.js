@@ -238,7 +238,7 @@ async function createReservation() {
     msg.textContent = "user_id を入力してください";
     return;
   }
-  if (!date || !startHm || !endHm) {
+  if (!date || !startHm || !durationStr) {
     msg.textContent = "日付・開始・終了を指定してください";
     return;
   }
