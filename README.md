@@ -22,3 +22,7 @@ docker-compose up -d --build
 - `CLIENT_ID`: クライアントID
 - `CLIENT_SECRET`: クライアントシークレット
 - `DEVICE_ID`: デバイスID
+
+## ドキュメント
+
+- [UI 操作ガイド（日本語）](ui_guide_ja.md)
