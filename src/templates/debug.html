@@ -94,7 +94,7 @@
         -->
 
         <button onclick="createReservation()">予約作成</button>
-        <pre id="createReservationResult"></pre>
+        <pre id="createReservationResult" style="display: none"></pre>
       </section>
 
       <section>
@@ -103,7 +103,7 @@
         <button onclick="setOccupancy(false)">
           空室にする (occupied=false)
         </button>
-        <pre id="occupancyResult"></pre>
+        <pre id="occupancyResult" style="display: none"></pre>
       </section>
     </div>
 
@@ -112,7 +112,7 @@
         <h2>3. 現在ステータス</h2>
         <button onclick="fetchStatus()">最新状態を取得</button>
         <div id="statusView"></div>
-        <pre id="statusResult"></pre>
+        <pre id="statusResult" style="display: none"></pre>
       </section>
 
       <section>
@@ -130,7 +130,7 @@
           </thead>
           <tbody></tbody>
         </table>
-        <pre id="reservationsResult"></pre>
+        <pre id="reservationsResult" style="display: none"></pre>
       </section>
     </div>
 
@@ -141,7 +141,7 @@
         <input id="penaltyUserId" type="text" value="user-001" />
       </label>
       <button onclick="fetchPenalty()">ペナルティ取得</button>
-      <pre id="penaltyResult"></pre>
+      <pre id="penaltyResult" style="display: none"></pre>
     </section>
 
     <section>
@@ -170,7 +170,7 @@
       </table>
 
       <button onclick="updateStateParams()">パラメータを更新</button>
-      <pre id="stateParamsResult"></pre>
+      <pre id="stateParamsResult" style="display: none"></pre>
     </section>
 
     <section>
@@ -228,7 +228,7 @@
       </label>
       <button onclick="applyTimeSetting()">設定を反映</button>
 
-      <pre id="timeResult"></pre>
+      <pre id="timeResult" style="display: none"></pre>
     </section>
     <script src="{{ url_for('static', filename='debug.js') }}"></script>
   </body>
