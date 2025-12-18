@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request, render_template
+from flask import Flask, jsonify, request, render_template, redirect, url_for
 import Repository
 import logging
 import os
@@ -21,6 +21,10 @@ from Repository.reservation_repository import (
 from Repository.penalty_repository import (
     InMemoryPenaltyRepository,
     SqlitePenaltyRepository,
+)
+from Repository.user_repository import (
+    InMemoryUserRepository,
+    SqliteUserRepository,
 )
 from Repository.db import init_db
 from Services.penalty_service import PenaltyService
@@ -63,15 +67,17 @@ ROOM_ID = "Room-A"
 USE_SQLITE = os.getenv("USE_SQLITE", "false").lower() == "true"
 
 if USE_SQLITE:
-    print("[Config] Using SqliteReservationRepository / SqlitePenaltyRepository")
+    print("[Config] Using SqliteReservationRepository / SqlitePenaltyRepository / SqliteUserRepository")
     # SQLite テーブルがなければ作成
     init_db()
     reservation_repo = SqliteReservationRepository(buffer_minutes=5)
     penalty_repo = SqlitePenaltyRepository()
+    user_repo = SqliteUserRepository()
 else:
-    print("[Config] Using InMemoryReservationRepository / InMemoryPenaltyRepository")
+    print("[Config] Using InMemoryReservationRepository / InMemoryPenaltyRepository / InMemoryUserRepository")
     reservation_repo = InMemoryReservationRepository(buffer_minutes=5)
     penalty_repo = InMemoryPenaltyRepository()
+    user_repo = InMemoryUserRepository()
 
 penalty_service = PenaltyService(penalty_repo)
 
@@ -362,7 +368,51 @@ def app_ui():
     一般ユーザー向けの簡易予約画面。
     /debug/ui は開発者用として残す。
     """
-    return render_template("app.html")
+    user_id = request.args.get("user_id")
+    return render_template("app.html", user_id=user_id)
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    """
+    ログイン画面
+    """
+    if request.method == "POST":
+        user_id = request.form.get("user_id")
+        password = request.form.get("password")
+
+        if not user_id or not password:
+            return render_template("login.html", error="IDとパスワードは必須です")
+
+        if user_repo.authenticate(user_id, password):
+            # 認証成功したら簡易予約画面へリダイレクト
+            return redirect(url_for("app_ui", user_id=user_id))
+        else:
+            return render_template("login.html", error="IDまたはパスワードが間違っています")
+
+    return render_template("login.html")
+
+
+@app.route("/signup", methods=["GET", "POST"])
+def signup():
+    """
+    アカウント作成画面
+    """
+    if request.method == "POST":
+        user_id = request.form.get("user_id")
+        password = request.form.get("password")
+
+        if not user_id or not password:
+            return render_template("signup.html", error="IDとパスワードは必須です")
+
+        try:
+            user_repo.create_user(user_id, password)
+            # 作成成功したら簡易予約画面へリダイレクト
+            return redirect(url_for("app_ui"))
+        except ValueError as e:
+            return render_template("signup.html", error=str(e))
+
+    return render_template("signup.html")
 
 
 @app.route("/api/room_status")

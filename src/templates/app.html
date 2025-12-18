@@ -38,12 +38,7 @@
     <!-- 1. ユーザー & 日付 & 予約作成 -->
     <section>
       <h2>1. 予約作成</h2>
-      <label>
-        user_id:
-        <input id="userId" type="text" value="user-001" />
-      </label>
       <div id="banBanner" style="margin-top: 4px; font-weight: bold"></div>
-      <br />
       <label>
         日付:
         <input id="resDate" type="date" />
@@ -100,6 +95,9 @@
       <pre id="penaltyError"></pre>
     </section>
 
+    <script>
+      const user_id = "{{ user_id }}";
+    </script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
   </body>
 </html>

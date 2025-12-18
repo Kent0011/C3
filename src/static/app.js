@@ -149,7 +149,6 @@ function updateEndTimeOptions() {
 }
 
 async function updateBanBanner() {
-  const userInput = document.getElementById("userId");
   const banner = document.getElementById("banBanner");
   const reserveButton = document.querySelector(
     'button[onclick="createReservation()"]'
@@ -160,7 +159,7 @@ async function updateBanBanner() {
     return;
   }
 
-  const userId = userInput.value.trim();
+  const userId = user_id;
 
   // user_id 未入力ならバナーを消してボタン有効化
   if (!userId) {
@@ -228,7 +227,7 @@ async function updateBanBanner() {
 }
 
 async function createReservation() {
-  const userId = document.getElementById("userId").value.trim();
+  const userId = user_id;
   const date = document.getElementById("resDate").value;
   const startHm = document.getElementById("startTimeSelect").value;
   const durationStr = document.getElementById("durationSelect").value;
@@ -329,7 +328,7 @@ async function loadStatus() {
 }
 
 async function loadReservations() {
-  const userId = document.getElementById("userId").value.trim();
+  const userId = user_id;
   const date = document.getElementById("resDate").value;
   const err = document.getElementById("reservationError");
 
@@ -392,7 +391,7 @@ async function cancelReservation(reservationId) {
 }
 
 async function loadPenalty() {
-  const userId = document.getElementById("userId").value.trim();
+  const userId = user_id;
   const err = document.getElementById("penaltyError");
   const tbody = document.querySelector("#penaltyTable tbody");
 
@@ -446,16 +445,4 @@ window.addEventListener("DOMContentLoaded", () => {
   loadStatus();
   loadReservations();
   loadPenalty();
-
-  const userInput = document.getElementById("userId");
-  if (userInput) {
-    // 入力が変わるたびに BAN 状態を更新
-    userInput.addEventListener("input", () => {
-      updateBanBanner();
-      // 必要ならここで loadPenalty() も呼んで詳細テーブルと同期させてもよい
-      // loadPenalty();
-    });
-    // 初期表示時にも一度 BAN 状態をチェック
-    updateBanBanner();
-  }
 });
