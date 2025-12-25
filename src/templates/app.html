@@ -33,7 +33,15 @@
     </style>
   </head>
   <body>
-    <h1>Room Reservation</h1>
+    <div
+      style="display: flex; justify-content: space-between; align-items: center"
+    >
+      <h1>Room Reservation</h1>
+      <div>
+        <span>User: {{ user_id }}</span>
+        <a href="/logout" style="margin-left: 10px">ログアウト</a>
+      </div>
+    </div>
 
     <!-- 1. ユーザー & 日付 & 予約作成 -->
     <section>

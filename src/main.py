@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request, render_template, redirect, url_for
+from flask import Flask, jsonify, request, render_template, redirect, url_for, session
 import Repository
 import logging
 import os
@@ -46,6 +46,7 @@ log = logging.getLogger("werkzeug")
 log.setLevel(logging.ERROR)
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
+app.secret_key = os.getenv("SECRET_KEY", "dev_secret_key")  # セッション利用に必須
 
 # --- 設定 ---
 POLLING_INTERVAL = 5  # 秒 (設計仕様)
@@ -366,10 +367,19 @@ def debug_reset_penalty(user_id: str):
 def app_ui():
     """
     一般ユーザー向けの簡易予約画面。
-    /debug/ui は開発者用として残す。
+    セッション認証を使用。
     """
-    user_id = request.args.get("user_id")
+    user_id = session.get("user_id")
+    if not user_id:
+        return redirect(url_for("login"))
+
     return render_template("app.html", user_id=user_id)
+
+
+@app.route("/logout")
+def logout():
+    session.pop("user_id", None)
+    return redirect(url_for("login"))
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -385,8 +395,9 @@ def login():
             return render_template("login.html", error="IDとパスワードは必須です")
 
         if user_repo.authenticate(user_id, password):
-            # 認証成功したら簡易予約画面へリダイレクト
-            return redirect(url_for("app_ui", user_id=user_id))
+            # 認証成功したらセッションに保存してリダイレクト
+            session["user_id"] = user_id
+            return redirect(url_for("app_ui"))
         else:
             return render_template("login.html", error="IDまたはパスワードが間違っています")
 
@@ -407,7 +418,8 @@ def signup():
 
         try:
             user_repo.create_user(user_id, password)
-            # 作成成功したら簡易予約画面へリダイレクト
+            # 作成成功したらログイン状態にしてリダイレクト
+            session["user_id"] = user_id
             return redirect(url_for("app_ui"))
         except ValueError as e:
             return render_template("signup.html", error=str(e))
