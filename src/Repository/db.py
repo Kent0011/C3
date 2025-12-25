@@ -40,6 +40,16 @@ def init_db():
     conn = get_connection()
     cur = conn.cursor()
 
+    # --- users テーブル（新規） ---
+    cur.execute(
+        """
+    CREATE TABLE IF NOT EXISTS users (
+      user_id       TEXT PRIMARY KEY,
+      password_hash TEXT NOT NULL
+    );
+    """
+    )
+
     # --- reservations テーブル（既存） ---
     cur.execute(
         """
