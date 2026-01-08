@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Room Reserve System - スマートな会議室予約</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <header class="header">
+        <div class="container">
+            <h1 class="logo">Room Reserve System</h1>
+            <nav class="nav">
+                <a href="{{ url_for('login') }}" class="btn btn-outline">ログイン</a>
+                <a href="{{ url_for('signup') }}" class="btn btn-primary">新規登録</a>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <section class="hero">
+            <div class="container">
+                <div class="hero-content">
+                    <h2>会議室利用を、<br>もっとスマートに。</h2>
+                    <p>AIカメラによる空室検知と自動予約管理で、<br>オフィスの会議室運用を最適化します。</p>
+                    <div class="hero-actions">
+                        <a href="{{ url_for('signup') }}" class="btn btn-large btn-primary">今すぐ始める</a>
+                        <a href="#features" class="btn btn-large btn-outline">機能を見る</a>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="features" class="features">
+            <div class="container">
+                <h3 class="section-title">主な機能</h3>
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon">📅</div>
+                        <h4>簡単予約</h4>
+                        <p>Webブラウザからいつでもどこでも会議室の空き状況確認と予約が可能です。</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">📷</div>
+                        <h4>AI空室検知</h4>
+                        <p>カメラ映像から人の有無を自動検知。予約が入っていても誰もいなければ自動で解放します。</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">⚠️</div>
+                        <h4>ペナルティ管理</h4>
+                        <p>無断キャンセルや時間超過を自動で記録。公平な会議室利用を促進します。</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="cta">
+            <div class="container">
+                <h3>効率的なオフィス運営を始めましょう</h3>
+                <p>導入は簡単。カメラを設置してシステムに接続するだけ。</p>
+                <a href="{{ url_for('signup') }}" class="btn btn-large btn-white">アカウント作成</a>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <div class="container">
+            <p>&copy; 2025 Room Reserve System. All rights reserved.</p>
+        </div>
+    </footer>
+</body>
+</html>
+

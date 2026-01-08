@@ -47,7 +47,7 @@ async function setOccupancy(occupied) {
 }
 
 async function fetchStatus() {
-  const res = await fetch("/");
+  const res = await fetch("/api/status");
   const text = await res.text();
 
   // 生JSONをそのまま表示（失敗時の確認用）
