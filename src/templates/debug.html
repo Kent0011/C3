@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Room Debug UI</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      body {
+        font-family: sans-serif;
+        margin: 16px;
+      }
+      h1 {
+        margin-bottom: 8px;
+      }
+      section {
+        border: 1px solid #ccc;
+        padding: 12px;
+        margin-bottom: 16px;
+      }
+      label {
+        display: block;
+        margin: 4px 0;
+      }
+      input,
+      button {
+        margin: 4px 0;
+      }
+      textarea {
+        width: 100%;
+        height: 120px;
+      }
+      .row {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+      .row > section {
+        flex: 1 1 300px;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      th,
+      td {
+        border: 1px solid #ccc;
+        padding: 4px;
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Room Debug UI</h1>
+
+    <div class="row">
+      <section>
+        <h2>1. 予約作成</h2>
+        <label>
+          user_id:
+          <input id="userId" type="text" value="user-001" />
+        </label>
+        <label>
+          room_id:
+          <input id="roomId" type="text" value="Room-A" />
+        </label>
+
+        <!-- 日付選択 -->
+        <label>
+          日付:
+          <input id="resDate" type="date" />
+        </label>
+
+        <!-- 時刻選択（5分刻み） -->
+        <label>
+          開始時刻:
+          <select id="startTimeSelect"></select>
+        </label>
+        <label>
+          終了時刻:
+          <select id="endTimeSelect"></select>
+        </label>
+
+        <!-- 高度な手入力を残したければ、下に「上級者向け」入力として残してもよい -->
+        <!--
+          <details>
+            <summary>ISO8601 直接入力（上級者向け）</summary>
+            <label>start_time (ISO8601, JST):
+              <input id="startTime" type="text" placeholder="2025-11-29T14:50:00+09:00" />
+            </label>
+            <label>end_time (ISO8601, JST):
+              <input id="endTime" type="text" placeholder="2025-11-29T15:20:00+09:00" />
+            </label>
+          </details>
+        -->
+
+        <button onclick="createReservation()">予約作成</button>
+        <pre id="createReservationResult" style="display: none"></pre>
+      </section>
+
+      <section>
+        <h2>2. 占有状態（dummyモード専用）</h2>
+        <button onclick="setOccupancy(true)">占有にする (occupied=true)</button>
+        <button onclick="setOccupancy(false)">
+          空室にする (occupied=false)
+        </button>
+        <pre id="occupancyResult" style="display: none"></pre>
+      </section>
+    </div>
+
+    <div class="row">
+      <section>
+        <h2>3. 現在ステータス</h2>
+        <button onclick="fetchStatus()">最新状態を取得</button>
+        <div id="statusView"></div>
+        <pre id="statusResult" style="display: none"></pre>
+      </section>
+
+      <section>
+        <h2>4. 予約一覧</h2>
+        <button onclick="fetchReservations()">予約一覧を取得</button>
+        <table id="reservationsTable">
+          <thead>
+            <tr>
+              <th>reservation_id</th>
+              <th>user_id</th>
+              <th>start_time</th>
+              <th>end_time</th>
+              <th>status</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <pre id="reservationsResult" style="display: none"></pre>
+      </section>
+    </div>
+
+    <section>
+      <h2>5. ペナルティ確認</h2>
+      <label>
+        user_id:
+        <input id="penaltyUserId" type="text" value="user-001" />
+      </label>
+      <button onclick="fetchPenalty()">ペナルティ取得</button>
+      <pre id="penaltyResult" style="display: none"></pre>
+    </section>
+
+    <section>
+      <h2>6. 状態パラメータ (デバッグ用)</h2>
+      <button onclick="loadStateParams()">現在値を取得</button>
+
+      <table>
+        <tbody>
+          <tr>
+            <th>arrival_window_before_sec</th>
+            <td><input id="arrivalBefore" type="number" min="0" step="1" /></td>
+          </tr>
+          <tr>
+            <th>arrival_window_after_sec</th>
+            <td><input id="arrivalAfter" type="number" min="0" step="1" /></td>
+          </tr>
+          <tr>
+            <th>grace_period_sec</th>
+            <td><input id="gracePeriod" type="number" min="0" step="1" /></td>
+          </tr>
+          <tr>
+            <th>cleanup_margin_sec</th>
+            <td><input id="cleanupMargin" type="number" min="0" step="1" /></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <button onclick="updateStateParams()">パラメータを更新</button>
+      <pre id="stateParamsResult" style="display: none"></pre>
+    </section>
+
+    <section>
+      <h2>7. 時刻制御（仮想時計）</h2>
+      <button onclick="loadTimeStatus()">現在設定を取得</button>
+
+      <table>
+        <tbody>
+          <tr>
+            <th>use_simulated</th>
+            <td><span id="timeUseSim"></span></td>
+          </tr>
+          <tr>
+            <th>scale</th>
+            <td><span id="timeScale"></span></td>
+          </tr>
+          <tr>
+            <th>system_now</th>
+            <td><span id="timeSystemNow"></span></td>
+          </tr>
+          <tr>
+            <th>current_now</th>
+            <td><span id="timeCurrentNow"></span></td>
+          </tr>
+          <tr>
+            <th>base_real</th>
+            <td><span id="timeBaseReal"></span></td>
+          </tr>
+          <tr>
+            <th>base_sim</th>
+            <td><span id="timeBaseSim"></span></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>設定</h3>
+      <label>
+        mode:
+        <select id="timeMode">
+          <option value="real">real（実時間）</option>
+          <option value="simulated">simulated（仮想）</option>
+        </select>
+      </label>
+      <label>
+        仮想現在時刻 (ISO8601, JST省略可):
+        <input
+          id="timeNowInput"
+          type="text"
+          placeholder="例: 2025-12-02T18:00:00+09:00"
+        />
+      </label>
+      <label>
+        倍率 scale:
+        <input id="timeScaleInput" type="number" step="0.1" value="1.0" />
+      </label>
+      <button onclick="applyTimeSetting()">設定を反映</button>
+
+      <pre id="timeResult" style="display: none"></pre>
+    </section>
+    <script src="{{ url_for('static', filename='debug.js') }}"></script>
+  </body>
+</html>

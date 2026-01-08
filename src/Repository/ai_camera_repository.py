@@ -75,3 +75,6 @@ class AiCameraRepository:
                 buf['Inferences'][0][str(i + 1)]['y'] = bbox_2d.Bottom()
         
         return buf['Inferences'][0]
+    
+    def fetch_dummy_result(self) -> dict:
+        return 1
