@@ -446,11 +446,16 @@ def api_list_reservations():
     user_id = request.args.get("user_id")
     date_str = request.args.get("date")  # "2025-11-29" など
 
-    all_res = reservation_repo.get_reservations_for_room(ROOM_ID)
+    if user_id:
+        # ユーザー指定がある場合は、部屋を問わずそのユーザーの予約をすべて取得
+        all_res = reservation_repo.get_reservations_by_user(user_id)
+    else:
+        # 指定がない場合はデフォルトルーム（後方互換またはデバッグ用途）
+        all_res = reservation_repo.get_reservations_for_room(ROOM_ID)
 
     result = []
     for r in all_res:
-        # user_id で絞る
+        # (user_id フィルタは既に get_reservations_by_user で済んでいるが、念のため)
         if user_id and r.user_id != user_id:
             continue
 
