@@ -240,10 +240,18 @@ async function loadUserStatus() {
           formatDateJP(banUntil) || "不明"
         }`;
         banAlert.style.display = "block";
-        if (reserveButton) reserveButton.disabled = true;
+        if (reserveButton) {
+          reserveButton.disabled = true;
+          reserveButton.classList.add("btn-disabled");
+          reserveButton.textContent = "現在予約できません";
+        }
       } else {
         banAlert.style.display = "none";
-        if (reserveButton) reserveButton.disabled = false;
+        if (reserveButton) {
+          reserveButton.disabled = false;
+          reserveButton.classList.remove("btn-disabled");
+          reserveButton.textContent = "予約する";
+        }
       }
     }
   } catch (e) {
@@ -253,6 +261,7 @@ async function loadUserStatus() {
 
 async function createReservation() {
   const userId = user_id;
+  const roomId = document.getElementById("roomIdSelect").value;
   const date = document.getElementById("resDate").value;
   const startHm = document.getElementById("startTimeSelect").value;
   const durationStr = document.getElementById("durationSelect").value;
@@ -283,6 +292,7 @@ async function createReservation() {
 
   const body = {
     user_id: userId,
+    room_id: roomId,
     date: date,
     start_time: startHm,
     end_time: endHm,
@@ -308,7 +318,11 @@ async function createReservation() {
         // 表示も更新
         loadUserStatus();
       } else {
-        msg.textContent = `エラー: ${data.error || text}`;
+        let errorMsg = data.error || text;
+        if (errorMsg.includes("Reservation conflicts with existing one")) {
+          errorMsg = "指定された時間帯には既に他の予約が入っています。";
+        }
+        msg.textContent = `エラー: ${errorMsg}`;
       }
     } else {
       msg.textContent = "予約を作成しました";
@@ -405,6 +419,7 @@ async function loadReservations() {
       return `
         <tr>
           <td>${r.reservation_id}</td>
+          <td>${r.room_id || "-"}</td>
           <td>${formatDateTime(r.start_time)}</td>
           <td>${formatDateTime(r.end_time)}</td>
           <td>${r.status}</td>

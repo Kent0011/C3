@@ -1,257 +1,305 @@
 <!DOCTYPE html>
 <html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Room Reserve System - 予約画面</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css') }}">
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/landing.css') }}"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
     <style>
-        /* app.html specific styles */
-        body {
-            background-color: var(--bg-light);
-        }
-        
-        .dashboard-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
-            gap: 30px;
-            margin-top: 40px;
-            margin-bottom: 40px;
-        }
+      /* app.html specific styles */
+      body {
+        background-color: var(--bg-light);
+      }
 
-        .dashboard-card {
-            background-color: var(--white);
-            padding: 30px;
-            border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-            border: 1px solid var(--border-color);
-        }
+      .dashboard-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+        gap: 30px;
+        margin-top: 40px;
+        margin-bottom: 40px;
+      }
 
-        .dashboard-card h2 {
-            font-size: 1.5em;
-            margin-bottom: 20px;
-            color: var(--primary-color);
-            border-bottom: 2px solid var(--bg-light);
-            padding-bottom: 10px;
-        }
+      .dashboard-card {
+        background-color: var(--white);
+        padding: 30px;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        border: 1px solid var(--border-color);
+      }
 
-        /* Form Styles */
-        label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: bold;
-            color: #555;
-        }
+      .dashboard-card h2 {
+        font-size: 1.5em;
+        margin-bottom: 20px;
+        color: var(--primary-color);
+        border-bottom: 2px solid var(--bg-light);
+        padding-bottom: 10px;
+      }
 
-        input[type="date"],
-        select {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid var(--border-color);
-            border-radius: 4px;
-            margin-bottom: 15px;
-            font-size: 1rem;
-            box-sizing: border-box;
-        }
+      /* Form Styles */
+      label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: bold;
+        color: #555;
+      }
 
-        /* Table Styles */
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 15px;
-        }
+      input[type="date"],
+      select {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        margin-bottom: 15px;
+        font-size: 1rem;
+        box-sizing: border-box;
+      }
 
-        th, td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid var(--border-color);
-        }
+      /* Table Styles */
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 15px;
+      }
 
-        th {
-            background-color: var(--bg-light);
-            font-weight: bold;
-            color: #555;
-        }
-        
-        tr:hover {
-            background-color: #f9f9f9;
-        }
+      th,
+      td {
+        padding: 12px;
+        text-align: left;
+        border-bottom: 1px solid var(--border-color);
+      }
 
-        /* Utility */
-        .btn-sm {
-            padding: 5px 10px;
-            font-size: 0.85rem;
-        }
+      th {
+        background-color: var(--bg-light);
+        font-weight: bold;
+        color: #555;
+      }
 
-        .error-message {
-            color: #dc3545;
-            background-color: #f8d7da;
-            border: 1px solid #f5c6cb;
-            padding: 10px;
-            border-radius: 4px;
-            margin-top: 10px;
-            white-space: pre-wrap;
-        }
-        
-        .status-message {
-            margin-left: 10px;
-            font-weight: bold;
-        }
+      tr:hover {
+        background-color: #f9f9f9;
+      }
 
-        .section-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            border-bottom: 2px solid var(--bg-light);
-            padding-bottom: 10px;
-        }
-        
-        .section-header h2 {
-            margin-bottom: 0;
-            border-bottom: none;
-            padding-bottom: 0;
-        }
+      /* Utility */
+      .btn-sm {
+        padding: 5px 10px;
+        font-size: 0.85rem;
+      }
 
-        /* Danger Button */
-        .btn-danger-outline {
-            background-color: transparent;
-            color: #dc3545;
-            border-color: #dc3545;
-        }
-        
-        .btn-danger-outline:hover {
-            background-color: #dc3545;
-            color: #fff;
-        }
+      .error-message {
+        color: #dc3545;
+        background-color: #f8d7da;
+        border: 1px solid #f5c6cb;
+        padding: 10px;
+        border-radius: 4px;
+        margin-top: 10px;
+        white-space: pre-wrap;
+      }
 
-        /* Alert Styles */
-        .alert {
-            padding: 15px;
-            margin-bottom: 20px;
-            border: 1px solid transparent;
-            border-radius: 4px;
-        }
-        
-        .alert-danger {
-            color: #721c24;
-            background-color: #f8d7da;
-            border-color: #f5c6cb;
-        }
+      .status-message {
+        margin-left: 10px;
+        font-weight: bold;
+      }
 
-        .user-info-display {
-            display: flex;
-            gap: 15px;
-            align-items: center;
-            margin-right: 15px;
-            font-size: 0.95rem;
-        }
+      .section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+        border-bottom: 2px solid var(--bg-light);
+        padding-bottom: 10px;
+      }
+
+      .section-header h2 {
+        margin-bottom: 0;
+        border-bottom: none;
+        padding-bottom: 0;
+      }
+
+      /* Danger Button */
+      .btn-danger-outline {
+        background-color: transparent;
+        color: #dc3545;
+        border-color: #dc3545;
+      }
+
+      .btn-danger-outline:hover {
+        background-color: #dc3545;
+        color: #fff;
+      }
+
+      .btn-disabled {
+        background-color: #cccccc !important;
+        border-color: #cccccc !important;
+        color: #666666 !important;
+        cursor: not-allowed !important;
+        opacity: 0.7;
+        pointer-events: none;
+      }
+
+      /* Alert Styles */
+      .alert {
+        padding: 15px;
+        margin-bottom: 20px;
+        border: 1px solid transparent;
+        border-radius: 4px;
+      }
+
+      .alert-danger {
+        color: #721c24;
+        background-color: #f8d7da;
+        border-color: #f5c6cb;
+      }
+
+      .user-info-display {
+        display: flex;
+        gap: 15px;
+        align-items: center;
+        margin-right: 15px;
+        font-size: 0.95rem;
+      }
     </style>
-</head>
-<body>
+  </head>
+  <body>
     <header class="header">
-        <div class="container">
-            <h1 class="logo">Room Reserve System</h1>
-            <nav class="nav" style="align-items: center;">
-                <div class="user-info-display">
-                    <span>User: <strong>{{ user_id }}</strong></span>
-                    <span id="headerPenalty">累積ペナルティ: -</span>
-                </div>
-                <a href="/logout" class="btn btn-outline btn-sm">ログアウト</a>
-            </nav>
-        </div>
+      <div class="container">
+        <h1 class="logo">Room Reserve System</h1>
+        <nav class="nav" style="align-items: center">
+          <div class="user-info-display">
+            <span>User: <strong>{{ user_id }}</strong></span>
+            <span id="headerPenalty">累積ペナルティ: -</span>
+          </div>
+          <a href="/logout" class="btn btn-outline btn-sm">ログアウト</a>
+        </nav>
+      </div>
     </header>
 
     <main>
-        <div class="container">
-            <div id="globalBanAlert" class="alert alert-danger" style="display: none;"></div>
+      <div class="container">
+        <div
+          id="globalBanAlert"
+          class="alert alert-danger"
+          style="display: none"
+        ></div>
 
-            <div class="dashboard-grid">
-                <!-- 1. 予約作成 -->
-                <div class="dashboard-card">
-                    <h2>1. 予約作成</h2>
-                    
-                    <label for="resDate">日付:</label>
-                    <input id="resDate" type="date" />
-                    
-                    <label for="startTimeSelect">開始時刻:</label>
-                    <select id="startTimeSelect"></select>
-                    
-                    <label for="durationSelect">利用時間（分）:</label>
-                    <select id="durationSelect"></select>
-                    
-                    <div style="margin-top: 20px;">
-                        <button onclick="createReservation()" class="btn btn-primary" style="width: 100%;">予約する</button>
-                    </div>
-                    <div id="createMessage" style="margin-top: 10px; text-align: center;"></div>
-                </div>
+        <div class="dashboard-grid">
+          <!-- 1. 予約作成 -->
+          <div class="dashboard-card">
+            <h2>1. 予約作成</h2>
 
-                <!-- 2. 現在ステータス -->
-                <div class="dashboard-card">
-                    <div class="section-header">
-                        <h2>2. 現在ステータス</h2>
-                        <button onclick="loadStatus()" class="btn btn-outline btn-sm">更新</button>
-                    </div>
-                    <div style="overflow-x: auto;">
-                        <table id="statusTable">
-                            <tbody></tbody>
-                        </table>
-                    </div>
-                </div>
+            <label for="roomIdSelect">会議室:</label>
+            <select id="roomIdSelect">
+              <option value="Room-A">Room-A</option>
+              <option value="Room-B">Room-B</option>
+              <option value="Room-C">Room-C</option>
+            </select>
+
+            <label for="resDate">日付:</label>
+            <input id="resDate" type="date" />
+
+            <label for="startTimeSelect">開始時刻:</label>
+            <select id="startTimeSelect"></select>
+
+            <label for="durationSelect">利用時間（分）:</label>
+            <select id="durationSelect"></select>
+
+            <div style="margin-top: 20px">
+              <button
+                onclick="createReservation()"
+                class="btn btn-primary"
+                style="width: 100%"
+              >
+                予約する
+              </button>
             </div>
+            <div
+              id="createMessage"
+              style="margin-top: 10px; text-align: center"
+            ></div>
+          </div>
 
-            <div class="dashboard-grid">
-                <!-- 3. 自分の予約一覧 -->
-                <div class="dashboard-card" style="grid-column: 1 / -1;">
-                    <div class="section-header">
-                        <h2>3. 自分の予約一覧</h2>
-                        <button onclick="loadReservations()" class="btn btn-outline btn-sm">更新</button>
-                    </div>
-                    <div style="overflow-x: auto;">
-                        <table id="reservationsTable">
-                            <thead>
-                                <tr>
-                                    <th>予約ID</th>
-                                    <th>開始日時</th>
-                                    <th>終了日時</th>
-                                    <th>ステータス</th>
-                                    <th>操作</th>
-                                </tr>
-                            </thead>
-                            <tbody></tbody>
-                        </table>
-                    </div>
-                    <pre id="reservationError" class="error-message" style="display: none;"></pre>
-                </div>
-
-                <!-- 4. ペナルティ状況 (削除済) -->
+          <!-- 2. 現在ステータス -->
+          <div class="dashboard-card">
+            <div class="section-header">
+              <h2>2. 現在ステータス</h2>
+              <button onclick="loadStatus()" class="btn btn-outline btn-sm">
+                更新
+              </button>
             </div>
+            <div style="overflow-x: auto">
+              <table id="statusTable">
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
         </div>
+
+        <div class="dashboard-grid">
+          <!-- 3. 自分の予約一覧 -->
+          <div class="dashboard-card" style="grid-column: 1 / -1">
+            <div class="section-header">
+              <h2>3. 自分の予約一覧</h2>
+              <button
+                onclick="loadReservations()"
+                class="btn btn-outline btn-sm"
+              >
+                更新
+              </button>
+            </div>
+            <div style="overflow-x: auto">
+              <table id="reservationsTable">
+                <thead>
+                  <tr>
+                    <th>予約ID</th>
+                    <th>会議室</th>
+                    <th>開始日時</th>
+                    <th>終了日時</th>
+                    <th>ステータス</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <pre
+              id="reservationError"
+              class="error-message"
+              style="display: none"
+            ></pre>
+          </div>
+
+          <!-- 4. ペナルティ状況 (削除済) -->
+        </div>
+      </div>
     </main>
 
     <footer class="footer">
-        <div class="container">
-            <p>&copy; 2025 Room Reserve System. All rights reserved.</p>
-        </div>
+      <div class="container">
+        <p>&copy; 2025 Room Reserve System. All rights reserved.</p>
+      </div>
     </footer>
 
     <script>
-        const user_id = "{{ user_id }}";
-        
-        // Error message handling helper
-        function showError(elementId, message) {
-            const el = document.getElementById(elementId);
-            if (message) {
-                el.textContent = message;
-                el.style.display = 'block';
-            } else {
-                el.style.display = 'none';
-            }
-        }
+      const user_id = "{{ user_id }}";
 
-        // Overwrite standard pre tags behavior if needed, or rely on app.js
+      // Error message handling helper
+      function showError(elementId, message) {
+        const el = document.getElementById(elementId);
+        if (message) {
+          el.textContent = message;
+          el.style.display = "block";
+        } else {
+          el.style.display = "none";
+        }
+      }
+
+      // Overwrite standard pre tags behavior if needed, or rely on app.js
     </script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
-</body>
+  </body>
 </html>
