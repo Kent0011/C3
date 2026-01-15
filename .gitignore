@@ -1,3 +1,4 @@
 .env
 __pycache__/
 objectdetection.fbs
+.vscode/settings.json
