@@ -50,9 +50,9 @@ graph TD
     Admin((Admin))
     
     subgraph "Room Reservation System"
-        WebUI[Web UI / Frontend<br/>(Templates & Static)]
-        API[Flask API Server<br/>(main.py)]
-        BgTask[Background Monitoring Task<br/>(Thread)]
+        WebUI["Web UI / Frontend<br/>(Templates & Static)"]
+        API["Flask API Server<br/>(main.py)"]
+        BgTask["Background Monitoring Task<br/>(Thread)"]
         
         subgraph "Services"
             RSM[RoomStateManager]
@@ -67,7 +67,7 @@ graph TD
             CamRepo[AiCameraRepository]
         end
         
-        DB[(SQLite DB)]
+        DB[("SQLite DB")]
         ExtCam[External AI Camera System]
     end
 
