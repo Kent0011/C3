@@ -101,6 +101,18 @@ class InMemoryReservationRepository:
         room_res_list = self._reservations_by_room.get(room_id, [])
         return list(room_res_list)
 
+    def get_reservations_by_user(self, user_id: str) -> List[Reservation]:
+        """
+        指定ユーザーの全予約を開始時刻順に返す（全部屋対象）。
+        """
+        all_res: List[Reservation] = []
+        for room_res_list in self._reservations_by_room.values():
+            for res in room_res_list:
+                if res.user_id == user_id:
+                    all_res.append(res)
+        all_res.sort(key=lambda r: r.start_time)
+        return all_res
+
     def get_reservation_by_id(self, reservation_id: str) -> Optional[Reservation]:
         """
         ID から予約を1件取得する。見つからなければ None。
@@ -312,6 +324,24 @@ class SqliteReservationRepository:
             ORDER BY start_time
             """,
             (room_id,),
+        )
+        rows = cur.fetchall()
+        conn.close()
+        return [self._row_to_reservation(r) for r in rows]
+
+    def get_reservations_by_user(self, user_id: str) -> List[Reservation]:
+        conn = get_connection()
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT reservation_id, room_id, user_id,
+                   start_time, end_time, status
+            FROM reservations
+            WHERE user_id = ?
+            ORDER BY start_time
+            """,
+            (user_id,),
         )
         rows = cur.fetchall()
         conn.close()

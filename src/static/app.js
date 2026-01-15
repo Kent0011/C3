@@ -56,6 +56,38 @@ function minutesToHHMM(totalMinutes) {
 }
 
 /**
+ * 日時文字列を見やすい形式に変換する (YYYY/MM/DD HH:MM)
+ */
+function formatDateTime(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr; // パース失敗時はそのまま返す
+
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+
+  return `${yyyy}/${mm}/${dd} ${hh}:${min}`;
+}
+
+/**
+ * 日付文字列を見やすい形式に変換する (YYYY年MM月DD日)
+ */
+function formatDateJP(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr;
+
+  const yyyy = d.getFullYear();
+  const mm = d.getMonth() + 1;
+  const dd = d.getDate();
+
+  return `${yyyy}年${mm}月${dd}日`;
+}
+
+/**
  * 開始時刻 (HH:MM) と duration 分 から、同じ日の終了時刻 (HH:MM) を計算する。
  * 日付をまたぐ場合は null を返す。
  */
@@ -148,86 +180,88 @@ function updateEndTimeOptions() {
   }
 }
 
-async function updateBanBanner() {
-  const banner = document.getElementById("banBanner");
+async function loadUserStatus() {
+  const userId = user_id;
+  const headerPenalty = document.getElementById("headerPenalty");
+  const banAlert = document.getElementById("globalBanAlert");
   const reserveButton = document.querySelector(
     'button[onclick="createReservation()"]'
   );
 
-  if (!banner || !userInput || !reserveButton) {
-    // 必要な要素がなければ何もしない
-    return;
-  }
-
-  const userId = user_id;
-
-  // user_id 未入力ならバナーを消してボタン有効化
   if (!userId) {
-    banner.textContent = "";
-    banner.style.color = "";
-    reserveButton.disabled = false;
+    if (headerPenalty) headerPenalty.textContent = "累積ペナルティ: -";
+    if (banAlert) banAlert.style.display = "none";
+    if (reserveButton) reserveButton.disabled = false;
     return;
   }
 
   try {
-    const res = await fetch(`/api/penalties/${encodeURIComponent(userId)}`);
-
+    // キャッシュ回避のためにタイムスタンプを付与
+    const url = `/api/penalties/${encodeURIComponent(userId)}?t=${Date.now()}`;
+    const res = await fetch(url);
     if (!res.ok) {
-      // サーバエラー時にフォームまで殺すのは最悪なので、何も表示しない方針
-      banner.textContent = "";
-      banner.style.color = "";
-      reserveButton.disabled = false;
+      // エラー時は非表示
+      if (banAlert) banAlert.style.display = "none";
       return;
     }
 
     const data = await res.json();
-
     const isBanned = !!data.is_banned;
-    const points = typeof data.points === "number" ? data.points : null;
-    const threshold =
-      typeof data.threshold === "number" ? data.threshold : null;
-    const windowDays = data.window_days ?? null;
+    const totalPenalty = data.total_penalty_count ?? 0;
     const banUntil = data.ban_until || null;
 
-    if (isBanned) {
-      // BAN 中
-      banner.style.color = "red";
-      const untilText = banUntil ?? "不明";
-      banner.textContent =
-        `現在 BAN 中です。解除予定: ${untilText} ` +
-        `（直近${windowDays}日で ${points}/${threshold} ポイント）`;
-      reserveButton.disabled = true;
-    } else {
-      // BAN ではない
-      if (
-        points !== null &&
-        threshold !== null &&
-        threshold > 0 &&
-        points >= threshold - 1
-      ) {
-        // あと1回で BAN の状態
-        banner.style.color = "darkorange";
-        banner.textContent =
-          `注意: 直近${windowDays}日で ${points}/${threshold} ポイントです。` +
-          `あと1回ノーショーで BAN されます。`;
+    // ヘッダー更新
+    if (headerPenalty) {
+      headerPenalty.textContent = `累積ペナルティ: ${totalPenalty}回`;
+    }
+
+    // BAN アラート更新
+    if (banAlert) {
+      if (isBanned) {
+        let daysRemainingText = "";
+        if (banUntil) {
+          const today = new Date();
+          // 時間情報を削除して日付のみで比較
+          today.setHours(0, 0, 0, 0);
+
+          const untilDate = new Date(banUntil);
+          if (!isNaN(untilDate.getTime())) {
+            const diffTime = untilDate - today;
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            if (diffDays > 0) {
+              daysRemainingText = `（解除まで残り ${diffDays} 日）`;
+            } else {
+              daysRemainingText = `（本日解除予定）`;
+            }
+          }
+        }
+
+        banAlert.innerHTML = `<strong>利用停止中:</strong> アカウントは現在停止されています。${daysRemainingText} 解除予定日: ${
+          formatDateJP(banUntil) || "不明"
+        }`;
+        banAlert.style.display = "block";
+        if (reserveButton) {
+          reserveButton.disabled = true;
+          reserveButton.classList.add("btn-disabled");
+          reserveButton.textContent = "現在予約できません";
+        }
       } else {
-        // 特に警告なし
-        banner.textContent = "";
-        banner.style.color = "";
+        banAlert.style.display = "none";
+        if (reserveButton) {
+          reserveButton.disabled = false;
+          reserveButton.classList.remove("btn-disabled");
+          reserveButton.textContent = "予約する";
+        }
       }
-      reserveButton.disabled = false;
     }
   } catch (e) {
-    console.error("updateBanBanner error", e);
-    // 例外時もフォームを殺さない
-    banner.textContent = "";
-    banner.style.color = "";
-    reserveButton.disabled = false;
+    console.error("loadUserStatus error", e);
   }
 }
 
 async function createReservation() {
   const userId = user_id;
+  const roomId = document.getElementById("roomIdSelect").value;
   const date = document.getElementById("resDate").value;
   const startHm = document.getElementById("startTimeSelect").value;
   const durationStr = document.getElementById("durationSelect").value;
@@ -258,6 +292,7 @@ async function createReservation() {
 
   const body = {
     user_id: userId,
+    room_id: roomId,
     date: date,
     start_time: startHm,
     end_time: endHm,
@@ -276,55 +311,134 @@ async function createReservation() {
       if (res.status === 403 && data.error === "user is banned") {
         const pts = data.points;
         const th = data.threshold;
-        const until = data.ban_until || "未設定";
+        const until = data.ban_until ? formatDateJP(data.ban_until) : "未設定";
         msg.textContent =
           `ペナルティがしきい値を超えているため予約できません。` +
           `現在ポイント: ${pts}/${th}, 解除予定: ${until}`;
         // 表示も更新
-        loadPenalty();
-        updateBanBanner();
+        loadUserStatus();
       } else {
-        msg.textContent = `エラー: ${data.error || text}`;
+        let errorMsg = data.error || text;
+        if (errorMsg.includes("Reservation conflicts with existing one")) {
+          errorMsg = "指定された時間帯には既に他の予約が入っています。";
+        }
+        msg.textContent = `エラー: ${errorMsg}`;
       }
     } else {
       msg.textContent = "予約を作成しました";
       loadReservations();
-      loadPenalty(); // 予約成功時もポイントが変わっていないか一応更新しておくのはあり
+      loadTimeline(); // 予約成功時にタイムラインも更新
+      loadUserStatus(); // 予約成功時もポイントが変わっていないか一応更新しておくのはあり
     }
   } catch (e) {
     msg.textContent = `予期せぬ応答: ${text}`;
   }
 }
 
-async function loadStatus() {
-  const res = await fetch("/api/room_status");
-  const text = await res.text();
-  let data = null;
-  try {
-    data = JSON.parse(text);
-  } catch (e) {
-    document.querySelector("#statusTable tbody").innerHTML =
-      "<tr><td>JSON parse error</td></tr>";
-    return;
+async function loadTimeline() {
+  const dateStr = document.getElementById("resDate").value;
+  const dateDisplay = document.getElementById("timelineDateDisplay");
+  if (dateDisplay) {
+    dateDisplay.textContent = dateStr ? formatDateJP(dateStr) : "--";
   }
 
-  const keys = [
-    "timestamp",
-    "room_id",
-    "room_state",
-    "people_count",
-    "is_used", // 今は占有フラグ
-    "reservation_id",
-    "alert",
-  ];
-  const rows = keys
-    .map((k) => {
-      const v = data[k];
-      return `<tr><th>${k}</th><td>${v == null ? "" : v}</td></tr>`;
-    })
-    .join("");
+  const timelineView = document.getElementById("timelineView");
+  if (!timelineView) return;
 
-  document.querySelector("#statusTable tbody").innerHTML = rows;
+  timelineView.innerHTML =
+    '<div style="text-align:center; padding:10px;">読み込み中...</div>';
+
+  const rooms = ["Room-A", "Room-B", "Room-C"];
+  // 0:00 - 24:00 (1440 mins)
+  const MIN_START = 0;
+  const TOTAL_MINS = 1440;
+
+  // Header (Time scale)
+  let headerHtml = `
+    <div class="timeline-row" style="height:25px; border-bottom:1px solid #ddd; margin-bottom:5px;">
+      <div class="timeline-room-label"></div>
+      <div class="timeline-track-container" style="background:transparent; border:none; height:100%; position:relative;">
+  `;
+
+  for (let h = 0; h <= 24; h += 3) {
+    const leftPct = ((h * 60) / TOTAL_MINS) * 100;
+    // Adjust label position
+    let transform = "translateX(-50%)";
+    if (h === 0) transform = "translateX(0)";
+    if (h === 24) transform = "translateX(-100%)";
+
+    headerHtml += `<div style="position:absolute; left:${leftPct}%; top:0; font-size:0.75rem; color:#666; transform:${transform}; border-left:1px solid #ccc; padding-left:2px; height:10px;">${h}:00</div>`;
+  }
+  headerHtml += "</div></div>";
+
+  let html = headerHtml;
+
+  for (const roomId of rooms) {
+    // Fetch reservations for this room and date
+    // Note: API returns all users if user_id is omitted.
+    const url = `/api/reservations?room_id=${roomId}&date=${dateStr}`;
+    let reservations = [];
+    try {
+      const res = await fetch(url);
+      if (res.ok) {
+        reservations = await res.json();
+      }
+    } catch (e) {
+      console.error(`Failed to fetch reservations for ${roomId}`, e);
+    }
+
+    // Build row
+    html += `
+      <div class="timeline-row">
+        <div class="timeline-room-label">${roomId}</div>
+        <div class="timeline-track-container">
+    `;
+
+    // Add blocks
+    if (Array.isArray(reservations)) {
+      reservations.forEach((r) => {
+        if (r.status === "CANCELLED") return;
+
+        const start = new Date(r.start_time);
+        const end = new Date(r.end_time);
+
+        // Calculate minutes from 0:00
+        const startMins = start.getHours() * 60 + start.getMinutes();
+        const endMins = end.getHours() * 60 + end.getMinutes();
+
+        let duration = endMins - startMins;
+        // 日付またぎ対応（簡易）: 終了が翌日の場合
+        if (endMins < startMins) {
+          duration = 24 * 60 + endMins - startMins;
+        }
+
+        const leftPct = (startMins / TOTAL_MINS) * 100;
+        const widthPct = (duration / TOTAL_MINS) * 100;
+
+        const isMyRes = r.user_id === user_id;
+        const className = isMyRes
+          ? "timeline-block my-reservation"
+          : "timeline-block other-reservation";
+        const title = `${r.start_time} - ${r.end_time} (${r.user_id})`;
+        const label = isMyRes ? "自分" : "予約済";
+
+        html += `
+          <div class="${className}" 
+               style="left: ${leftPct}%; width: ${widthPct}%;" 
+               title="${title}">
+            ${label}
+          </div>
+        `;
+      });
+    }
+
+    html += `
+        </div>
+      </div>
+    `;
+  }
+
+  timelineView.innerHTML = html;
 }
 
 async function loadReservations() {
@@ -358,13 +472,14 @@ async function loadReservations() {
     .map((r) => {
       const canCancel = r.status === "ACTIVE";
       const btn = canCancel
-        ? `<button onclick="cancelReservation('${r.reservation_id}')">キャンセル</button>`
+        ? `<button onclick="cancelReservation('${r.reservation_id}')" class="btn btn-sm btn-danger-outline">キャンセル</button>`
         : "";
       return `
         <tr>
           <td>${r.reservation_id}</td>
-          <td>${r.start_time}</td>
-          <td>${r.end_time}</td>
+          <td>${r.room_id || "-"}</td>
+          <td>${formatDateTime(r.start_time)}</td>
+          <td>${formatDateTime(r.end_time)}</td>
           <td>${r.status}</td>
           <td>${btn}</td>
         </tr>
@@ -387,50 +502,11 @@ async function cancelReservation(reservationId) {
     alert(`キャンセル失敗: ${text}`);
   } else {
     loadReservations();
+    loadTimeline(); // キャンセル時もタイムラインを更新
   }
 }
 
-async function loadPenalty() {
-  const userId = user_id;
-  const err = document.getElementById("penaltyError");
-  const tbody = document.querySelector("#penaltyTable tbody");
-
-  if (!userId) {
-    err.textContent = "user_id を入力してください";
-    tbody.innerHTML = "";
-    return;
-  }
-
-  const res = await fetch(`/api/penalties/${encodeURIComponent(userId)}`);
-  const text = await res.text();
-
-  let data = null;
-  try {
-    data = JSON.parse(text);
-  } catch (e) {
-    err.textContent = `JSON parse error: ${text}`;
-    return;
-  }
-
-  err.textContent = "";
-
-  const rows = [
-    { key: "user_id", label: "user_id" },
-    { key: "points", label: "有効ポイント" },
-    { key: "threshold", label: "しきい値" },
-    { key: "window_days", label: "対象日数" },
-    { key: "is_banned", label: "BAN中か" },
-    { key: "ban_until", label: "BAN解除予定" },
-    { key: "total_penalty_count", label: "累積ペナルティ" },
-  ]
-    .map((row) => {
-      const v = data[row.key];
-      return `<tr><th>${row.label}</th><td>${v == null ? "" : v}</td></tr>`;
-    })
-    .join("");
-
-  tbody.innerHTML = rows;
-}
+// loadPenalty was removed and merged into loadUserStatus
 
 window.addEventListener("DOMContentLoaded", () => {
   initTimeSelect("startTimeSelect");
@@ -442,7 +518,13 @@ window.addEventListener("DOMContentLoaded", () => {
 
   // updateEndTimeOptions() はもう不要なので呼ばない
 
-  loadStatus();
+  loadTimeline();
   loadReservations();
-  loadPenalty();
+  loadUserStatus();
+
+  // 日付変更時にタイムラインと予約一覧を更新
+  document.getElementById("resDate").addEventListener("change", () => {
+    loadTimeline();
+    loadReservations();
+  });
 });
