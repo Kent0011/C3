@@ -450,8 +450,9 @@ def api_list_reservations():
         # ユーザー指定がある場合は、部屋を問わずそのユーザーの予約をすべて取得
         all_res = reservation_repo.get_reservations_by_user(user_id)
     else:
-        # 指定がない場合はデフォルトルーム（後方互換またはデバッグ用途）
-        all_res = reservation_repo.get_reservations_for_room(ROOM_ID)
+        # 指定がない場合はroom_idでフィルタ（省略時はデフォルトルーム）
+        target_room_id = request.args.get("room_id", ROOM_ID)
+        all_res = reservation_repo.get_reservations_for_room(target_room_id)
 
     result = []
     for r in all_res:

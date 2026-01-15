@@ -327,6 +327,7 @@ async function createReservation() {
     } else {
       msg.textContent = "予約を作成しました";
       loadReservations();
+      loadTimeline(); // 予約成功時にタイムラインも更新
       loadUserStatus(); // 予約成功時もポイントが変わっていないか一応更新しておくのはあり
     }
   } catch (e) {
@@ -334,53 +335,110 @@ async function createReservation() {
   }
 }
 
-async function loadStatus() {
-  const res = await fetch("/api/room_status");
-  const text = await res.text();
-  let data = null;
-  try {
-    data = JSON.parse(text);
-  } catch (e) {
-    document.querySelector("#statusTable tbody").innerHTML =
-      "<tr><td>JSON parse error</td></tr>";
-    return;
+async function loadTimeline() {
+  const dateStr = document.getElementById("resDate").value;
+  const dateDisplay = document.getElementById("timelineDateDisplay");
+  if (dateDisplay) {
+    dateDisplay.textContent = dateStr ? formatDateJP(dateStr) : "--";
   }
 
-  const labelMap = {
-    timestamp: "更新日時",
-    room_id: "会議室ID",
-    room_state: "状態",
-    people_count: "検知人数",
-    is_used: "使用中判定",
-    reservation_id: "現在の予約ID",
-    alert: "アラート",
-  };
+  const timelineView = document.getElementById("timelineView");
+  if (!timelineView) return;
 
-  const keys = [
-    "timestamp",
-    "room_id",
-    "room_state",
-    "people_count",
-    "is_used",
-    "reservation_id",
-    "alert",
-  ];
-  const rows = keys
-    .map((k) => {
-      const v = data[k];
-      const label = labelMap[k] || k;
-      let displayValue = v == null ? "" : v;
+  timelineView.innerHTML =
+    '<div style="text-align:center; padding:10px;">読み込み中...</div>';
 
-      // 更新日時のフォーマット
-      if (k === "timestamp" && v) {
-        displayValue = formatDateTime(v);
+  const rooms = ["Room-A", "Room-B", "Room-C"];
+  // 0:00 - 24:00 (1440 mins)
+  const MIN_START = 0;
+  const TOTAL_MINS = 1440;
+
+  // Header (Time scale)
+  let headerHtml = `
+    <div class="timeline-row" style="height:25px; border-bottom:1px solid #ddd; margin-bottom:5px;">
+      <div class="timeline-room-label"></div>
+      <div class="timeline-track-container" style="background:transparent; border:none; height:100%; position:relative;">
+  `;
+
+  for (let h = 0; h <= 24; h += 3) {
+    const leftPct = ((h * 60) / TOTAL_MINS) * 100;
+    // Adjust label position
+    let transform = "translateX(-50%)";
+    if (h === 0) transform = "translateX(0)";
+    if (h === 24) transform = "translateX(-100%)";
+
+    headerHtml += `<div style="position:absolute; left:${leftPct}%; top:0; font-size:0.75rem; color:#666; transform:${transform}; border-left:1px solid #ccc; padding-left:2px; height:10px;">${h}:00</div>`;
+  }
+  headerHtml += "</div></div>";
+
+  let html = headerHtml;
+
+  for (const roomId of rooms) {
+    // Fetch reservations for this room and date
+    // Note: API returns all users if user_id is omitted.
+    const url = `/api/reservations?room_id=${roomId}&date=${dateStr}`;
+    let reservations = [];
+    try {
+      const res = await fetch(url);
+      if (res.ok) {
+        reservations = await res.json();
       }
+    } catch (e) {
+      console.error(`Failed to fetch reservations for ${roomId}`, e);
+    }
 
-      return `<tr><th>${label}</th><td>${displayValue}</td></tr>`;
-    })
-    .join("");
+    // Build row
+    html += `
+      <div class="timeline-row">
+        <div class="timeline-room-label">${roomId}</div>
+        <div class="timeline-track-container">
+    `;
 
-  document.querySelector("#statusTable tbody").innerHTML = rows;
+    // Add blocks
+    if (Array.isArray(reservations)) {
+      reservations.forEach((r) => {
+        if (r.status === "CANCELLED") return;
+
+        const start = new Date(r.start_time);
+        const end = new Date(r.end_time);
+
+        // Calculate minutes from 0:00
+        const startMins = start.getHours() * 60 + start.getMinutes();
+        const endMins = end.getHours() * 60 + end.getMinutes();
+
+        let duration = endMins - startMins;
+        // 日付またぎ対応（簡易）: 終了が翌日の場合
+        if (endMins < startMins) {
+          duration = 24 * 60 + endMins - startMins;
+        }
+
+        const leftPct = (startMins / TOTAL_MINS) * 100;
+        const widthPct = (duration / TOTAL_MINS) * 100;
+
+        const isMyRes = r.user_id === user_id;
+        const className = isMyRes
+          ? "timeline-block my-reservation"
+          : "timeline-block other-reservation";
+        const title = `${r.start_time} - ${r.end_time} (${r.user_id})`;
+        const label = isMyRes ? "自分" : "予約済";
+
+        html += `
+          <div class="${className}" 
+               style="left: ${leftPct}%; width: ${widthPct}%;" 
+               title="${title}">
+            ${label}
+          </div>
+        `;
+      });
+    }
+
+    html += `
+        </div>
+      </div>
+    `;
+  }
+
+  timelineView.innerHTML = html;
 }
 
 async function loadReservations() {
@@ -444,6 +502,7 @@ async function cancelReservation(reservationId) {
     alert(`キャンセル失敗: ${text}`);
   } else {
     loadReservations();
+    loadTimeline(); // キャンセル時もタイムラインを更新
   }
 }
 
@@ -459,7 +518,13 @@ window.addEventListener("DOMContentLoaded", () => {
 
   // updateEndTimeOptions() はもう不要なので呼ばない
 
-  loadStatus();
+  loadTimeline();
   loadReservations();
   loadUserStatus();
+
+  // 日付変更時にタイムラインと予約一覧を更新
+  document.getElementById("resDate").addEventListener("change", () => {
+    loadTimeline();
+    loadReservations();
+  });
 });

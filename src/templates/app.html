@@ -20,18 +20,23 @@
 
       .dashboard-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+        grid-template-columns: 1fr;
         gap: 30px;
         margin-top: 40px;
         margin-bottom: 40px;
+        width: 100%; /* Ensure grid takes full width */
+        min-width: 0; /* Prevents grid items from overflowing */
       }
-
       .dashboard-card {
         background-color: var(--white);
         padding: 30px;
         border-radius: 8px;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
         border: 1px solid var(--border-color);
+        /* Ensure card contents are contained */
+        width: 100%;
+        box-sizing: border-box;
+        overflow: hidden; /* Hide overflow from children if necessary */
       }
 
       .dashboard-card h2 {
@@ -163,6 +168,142 @@
         margin-right: 15px;
         font-size: 0.95rem;
       }
+
+      /* Timeline View Styles */
+      .timeline-container {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        overflow-x: auto;
+        padding-bottom: 10px;
+        /* Ensure scrolling works */
+        width: 100%;
+      }
+      .timeline-time-header {
+        display: flex;
+        margin-left: 80px; /* Space for room label */
+        border-bottom: 1px solid #ddd;
+        padding-bottom: 5px;
+        /* Double the width to stretch the scale */
+        min-width: 1200px;
+      }
+      .timeline-time-label {
+        flex: 1;
+        font-size: 0.75rem;
+        color: #888;
+        text-align: left;
+        border-left: 1px solid #eee;
+        padding-left: 2px;
+      }
+      .timeline-row {
+        display: flex;
+        align-items: center;
+        height: 40px;
+        /* Match the header width */
+        min-width: 1200px;
+      }
+      .timeline-room-label {
+        width: 80px;
+        font-weight: bold;
+        font-size: 0.9rem;
+        flex-shrink: 0;
+      }
+      .timeline-track-container {
+        flex: 1;
+        height: 100%;
+        background-color: #f5f5f5;
+        position: relative;
+        border-radius: 4px;
+        border: 1px solid #eee;
+      }
+      .timeline-block {
+        position: absolute;
+        top: 5px;
+        bottom: 5px;
+        background-color: #aaa;
+        border-radius: 3px;
+        font-size: 0.75rem;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        white-space: nowrap;
+        cursor: pointer;
+      }
+      .timeline-block.my-reservation {
+        background-color: var(--primary-color);
+        z-index: 2;
+      }
+      .timeline-block.other-reservation {
+        background-color: #999;
+      }
+      /* Tooltip or simple title is used for details */
+
+      /* Responsive Styles for narrow screens */
+      @media (max-width: 750px) {
+        /* Reduce base font size */
+        body {
+          font-size: 14px;
+        }
+        .logo {
+          font-size: 1.3em;
+        }
+        .dashboard-card h2 {
+          font-size: 1.3em;
+        }
+
+        .container {
+          padding: 0 15px; /* landing.css override might need !important if specificity issue, but 15px is fine */
+        }
+        .header .container {
+          flex-direction: column;
+          height: auto;
+          padding: 15px;
+          gap: 15px;
+        }
+        .nav {
+          width: 100%;
+          justify-content: space-between;
+          flex-wrap: wrap; /* Allow wrapping if user name is long */
+        }
+        .user-info-display {
+          margin-right: 0;
+          font-size: 0.9rem;
+          flex-wrap: wrap;
+        }
+
+        .dashboard-grid {
+          margin-top: 20px;
+          margin-bottom: 20px;
+          gap: 20px;
+        }
+        .dashboard-card {
+          padding: 15px; /* Reduce padding on mobile */
+        }
+        .section-header {
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 10px;
+        }
+        .section-header button {
+          align-self: flex-start;
+          width: 100%;
+        }
+        /* Make form elements easier to tap */
+        select,
+        input[type="date"],
+        button {
+          min-height: 44px;
+        }
+
+        /* Timeline specific */
+        .timeline-container {
+          /* Just to ensure it doesn't break layout */
+        }
+
+        /* Table responsive wrapper needed? It is already in overflow-x:auto div */
+      }
     </style>
   </head>
   <body>
@@ -223,18 +364,20 @@
             ></div>
           </div>
 
-          <!-- 2. 現在ステータス -->
+          <!-- 2. 予約状況 -->
           <div class="dashboard-card">
             <div class="section-header">
-              <h2>2. 現在ステータス</h2>
-              <button onclick="loadStatus()" class="btn btn-outline btn-sm">
+              <h2>2. 予約状況</h2>
+              <button onclick="loadTimeline()" class="btn btn-outline btn-sm">
                 更新
               </button>
             </div>
-            <div style="overflow-x: auto">
-              <table id="statusTable">
-                <tbody></tbody>
-              </table>
+            <p style="font-size: 0.9rem; color: #666; margin-bottom: 10px">
+              日付:
+              <span id="timelineDateDisplay" style="font-weight: bold">--</span>
+            </p>
+            <div id="timelineView" class="timeline-container">
+              <!-- Timeline rendered by JS -->
             </div>
           </div>
         </div>
